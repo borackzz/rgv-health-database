@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RGV Health Atlas v2 — Chronic Disease & Health Burden in the Rio Grande Valley</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:ital,wght@0,400;0,700;1,400;1,700&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&display=swap');
+:root{
+  /* ORIGINAL RGV earth-tone palette — unchanged */
+  --bg:#F2E8D2; --panel:#FBF5E8; --panel2:#EFE3C9; --ink:#3E362A; --muted:#8C7B61;
+  --line:#E2D4B6; --accent:#BD5D3A; --accent2:#B07F2C; --good:#5E7B4F; --bad:#B0492F; --teal:#3E7C7B;
+  /* derived helpers */
+  --ink2:#2E2820; --line2:#D8C7A4;
+  --box-line:rgba(46,40,32,.5); /* softened box-outline color (dialed back from solid --ink2) */
+  --shadow:0 1px 2px rgba(95,70,30,.06),0 10px 26px rgba(95,70,30,.045);
+  --maxw:1180px; --r:10px; --rs:6px;
+  --serif:'Fraunces',Georgia,'Times New Roman',serif;
+  --sans:'Atkinson Hyperlegible',ui-sans-serif,system-ui,sans-serif;
+
+  /* ---- "Field Atlas" refresh tokens (June 2026) ----
+     Used only by the masthead, sidebar, KPI summary cards, and ranked burden table.
+     The map + county-comparison panel and every other tab intentionally keep the
+     original palette above, unchanged. */
+  --fa-bg:#F0E6CC; --fa-panel:#FAF4E6; --fa-panel2:#ECDFBE; --fa-ink:#3E362A; --fa-ink2:#241F17; --fa-muted:#6E5D45;
+  --fa-line:#E0D2B0; --fa-line2:#D2BE95; --fa-accent:#B85631; --fa-accent2:#A8742A; --fa-teal:#33605F;
+  --fa-good:#5B7A52; --fa-amber:#C99A3D; --fa-bad:#9C3B2E; --fa-r:10px; --fa-rs:6px;
+  --fa-box-line:rgba(36,31,23,.5); /* softened box-outline color for Field Atlas components */
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;font-family:var(--sans);background:var(--bg);color:var(--ink);
+  font-size:16.5px;line-height:1.62;-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:0 28px}
+h1,h2,h3,h4{font-family:var(--serif);color:var(--ink2);font-weight:600;letter-spacing:-.01em;line-height:1.16}
+a{color:var(--accent);text-underline-offset:2px}
+a:hover{color:#9c4327}
+
+/* ---------- masthead ("Field Atlas") ---------- */
+header{position:relative;background:var(--fa-panel);border-bottom:1px solid var(--fa-line2);padding:34px 0 26px}
+header::before{content:"";position:absolute;top:0;left:0;right:0;height:5px;background:var(--fa-accent)}
+.kicker-row{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:16px}
+.kicker{margin:0;font-family:var(--sans);font-size:11px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--fa-ink2)}
+.voltag{margin:0;font-family:var(--sans);font-size:11px;font-weight:400;letter-spacing:.1em;text-transform:uppercase;color:var(--fa-muted)}
+.wordmark-row{display:flex;align-items:center;gap:14px;margin-bottom:14px}
+.wordmark-glyph{display:grid;grid-template-columns:repeat(2,7px);grid-template-rows:repeat(2,7px);gap:3px;flex-shrink:0}
+.wordmark-glyph span:nth-child(1){background:var(--fa-accent)}
+.wordmark-glyph span:nth-child(2){background:var(--fa-accent2)}
+.wordmark-glyph span:nth-child(3){background:var(--fa-teal)}
+.wordmark-glyph span:nth-child(4){background:var(--fa-accent)}
+header h1{margin:0;font-size:40px;line-height:1.08;font-weight:600;letter-spacing:-.01em;color:var(--fa-ink2)}
+header p.subhead{margin:0 0 18px;max-width:700px;color:var(--fa-muted);font-size:16px;line-height:1.6}
+.provenance-line{font-size:12.5px;color:var(--fa-muted);padding-top:14px;border-top:1px solid var(--fa-line2)}
+
+/* ---------- controls toolbar ---------- */
+.controls{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;margin:24px 0;padding:16px 20px;background:var(--panel);border:1px solid var(--box-line);border-radius:0}
+.controls .grp{display:flex;flex-direction:column;gap:6px}
+.controls .grp:last-child{margin-left:auto;flex-direction:row;align-items:center;gap:8px}
+label.lbl{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-weight:700}
+select,button{font-family:var(--sans);background:#fff;color:var(--ink);border:1px solid var(--line2);border-radius:var(--rs);padding:9px 13px;font-size:14.5px;cursor:pointer}
+select{min-width:200px}
+select:hover,button:hover{border-color:var(--accent2)}
+select:focus,button:focus,.toggle button:focus{outline:2px solid var(--accent);outline-offset:1px}
+.toggle{display:inline-flex;border:1px solid var(--line2);border-radius:var(--rs);overflow:hidden}
+.toggle button{border:none;border-radius:0;background:#fff;padding:9px 14px;color:var(--muted);font-weight:600}
+.toggle button+button{border-left:1px solid var(--line2)}
+.toggle button.on{background:var(--accent);color:#fff}
+.toggle button:disabled{opacity:.4;cursor:not-allowed}
+
+/* ---------- layout ---------- */
+.grid{display:grid;grid-template-columns:1.45fr 1fr;gap:22px}
+@media(max-width:1040px){.grid{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--box-line);border-radius:0;padding:24px;box-shadow:var(--shadow)}
+.card h2{margin:0 0 3px;font-size:18px;font-weight:600}
+.card .sub,.sub{color:var(--muted);font-size:13.5px;margin-bottom:16px;line-height:1.5}
+#map{height:512px;border-radius:0;border:1px solid var(--box-line);background:#EAD9B8}
+.legend{background:rgba(251,245,232,.97);padding:10px 13px;border-radius:0;border:1px solid var(--box-line);font-size:12.5px;color:var(--ink);line-height:1.85}
+.legend i{width:14px;height:14px;display:inline-block;margin-right:7px;border-radius:3px;vertical-align:-2px}
+.bivlegend table{border-collapse:collapse}
+.bivlegend td{width:16px;height:16px;padding:0;border:1px solid #FBF5E8}
+.leaflet-tooltip.tip{background:#FBF5E8;border:1px solid var(--box-line);color:var(--ink);font-size:13px;border-radius:0;box-shadow:0 6px 20px rgba(70,45,15,.18);max-width:250px;white-space:normal;padding:9px 12px}
+.spinner{position:absolute;z-index:500;top:16px;left:16px;background:rgba(251,245,232,.97);border:1px solid var(--box-line);padding:8px 13px;border-radius:0;font-size:12.5px;color:var(--accent)}
+
+/* ---------- KPIs ---------- */
+.kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.kpi{background:#fff;border:1px solid var(--box-line);border-radius:0;padding:14px 15px}
+.kpi .v{font-size:26px;font-weight:700;color:var(--ink2);font-variant-numeric:tabular-nums;line-height:1.1}
+.kpi .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-weight:700;margin-top:3px}
+.kpi .d{font-size:12.5px;margin-top:4px}
+.kpi .ci{font-size:11.5px;color:var(--muted);margin-top:2px;font-variant-numeric:tabular-nums}
+.up{color:var(--bad);font-weight:700}.down{color:var(--good);font-weight:700}
+.barwrap{position:relative;height:240px;margin-bottom:8px}
+
+/* ---------- tables ---------- */
+table.dt{width:100%;border-collapse:collapse;font-size:14px}
+.dt th,.dt td{padding:11px 12px;text-align:right;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
+.dt th:first-child,.dt td:first-child{text-align:left;font-variant-numeric:normal}
+.dt thead th{position:sticky;top:0;background:var(--panel2);color:var(--ink2);font-weight:700;font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;cursor:pointer;border-bottom:2px solid var(--line2)}
+.dt thead th:hover{color:var(--accent)}
+.dt tbody tr:nth-child(even){background:rgba(239,227,201,.4)}
+.dt tbody tr:hover{background:var(--panel2)}
+.tablewrap{max-height:560px;overflow:auto;border-radius:0;border:1px solid var(--box-line);background:var(--panel)}
+.pill{display:inline-block;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:700}
+
+/* ---------- tabs (underline) ---------- */
+.tabs{display:flex;gap:4px;flex-wrap:wrap;margin:38px 0 0;border-bottom:2px solid var(--line)}
+.tabs button{border:none;background:transparent;color:var(--muted);padding:11px 14px;font-size:14.5px;font-weight:600;border-bottom:3px solid transparent;margin-bottom:-2px;border-radius:0}
+.tabs button:hover{color:var(--ink2)}
+.tabs button.on{color:var(--accent);border-bottom-color:var(--accent)}
+.section{background:var(--panel);border:1px solid var(--box-line);border-radius:0;margin-top:18px;padding:32px}
+.section h2{font-size:25px;margin:0 0 6px}
+.section h3{font-size:18px;margin:24px 0 4px}
+.section>p{max-width:74ch}
+.lede{max-width:74ch;color:#574B39;margin:0 0 6px}
+
+/* ---------- conditions / narratives ---------- */
+.cond{border-left:3px solid var(--accent);padding:2px 0 2px 18px;margin:0 0 24px}
+.cond h3{margin:0 0 6px;font-size:18px}
+.cond .stat{color:var(--accent);font-weight:700}
+.cond p{margin:6px 0;color:#574B39;font-size:15.5px;line-height:1.62}
+.note{color:var(--muted);font-size:13px;line-height:1.55}
+.srcline{margin-top:14px;padding-top:10px;border-top:1px solid var(--line);font-size:11.5px;color:var(--muted);line-height:1.5}
+.srcline b{color:var(--ink2);font-weight:700;text-transform:uppercase;letter-spacing:.05em;font-size:10px;margin-right:6px}
+.flag{background:#F6E3C2;border:1px solid var(--box-line);color:#8A5524;padding:11px 15px;border-radius:0;font-size:14px;margin-bottom:14px}
+.hide{display:none}
+
+/* ---------- social drivers ---------- */
+.grid3{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+@media(max-width:760px){.grid3{grid-template-columns:repeat(2,1fr)}}
+.scard{background:#fff;border:1px solid var(--box-line);border-radius:0;padding:16px}
+.scard h4{margin:0 0 10px;font-size:15.5px;font-weight:600}
+.scard .row{display:flex;justify-content:space-between;font-size:14px;padding:5px 0;border-bottom:1px dashed var(--line);font-variant-numeric:tabular-nums}
+.scard .row b{color:var(--ink2)}
+.bar2{height:7px;background:#E2D4B6;border-radius:4px;margin-top:5px;overflow:hidden}
+.bar2 div{height:7px;border-radius:4px}
+
+/* ---------- research ---------- */
+.research-controls{display:flex;flex-wrap:wrap;gap:9px;align-items:center;margin:12px 0 18px}
+.chip{background:#fff;border:1px solid var(--line2);border-radius:20px;padding:6px 14px;font-size:13px;cursor:pointer;color:var(--muted);font-weight:600}
+.chip:hover{color:var(--ink2);border-color:var(--accent2)}
+.chip.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+.rgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:16px}
+.rcard{background:var(--panel);border:1px solid var(--box-line);border-radius:0;padding:18px;display:flex;flex-direction:column}
+.rcard .rtag{font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--teal);font-weight:700}
+.rcard h4{margin:8px 0;font-size:15.5px;line-height:1.35;font-weight:600}
+.rcard h4 a{color:var(--ink2);text-decoration:none}
+.rcard h4 a:hover{color:var(--accent)}
+.rcard .meta{font-size:12.5px;color:var(--muted);margin-bottom:9px}
+.rcard .sum{font-size:13.5px;color:#574B39;flex:1;line-height:1.55}
+.rcard .foot{margin-top:13px;display:flex;gap:10px;align-items:center}
+.oa{background:#E6EDD5;color:#4E6B3E;border:1px solid #C3CF9D;border-radius:4px;font-size:11px;padding:2px 7px;font-weight:700}
+.rlink{font-size:13px;font-weight:700}
+.spin{display:inline-block;width:14px;height:14px;border:2px solid #E2D4B6;border-top-color:var(--accent);border-radius:50%;animation:sp .8s linear infinite;vertical-align:-2px;margin-right:7px}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* ---------- misc ---------- */
+.src li{margin-bottom:9px;font-size:14.5px;color:#574B39}
+code{background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-size:13px}
+footer{padding:30px 0 60px;color:var(--muted);font-size:13px}
+@media(prefers-reduced-motion:reduce){*{animation:none!important}html{scroll-behavior:auto}}
+@media print{header::before{display:none}header,.controls,.tabs,#map,.spinner,button{display:none!important}.section,.card{break-inside:avoid;box-shadow:none}body{background:#fff;color:#000}}
+
+/* ===== app shell: left content rail + widened main ===== */
+.shell{max-width:1520px;margin:0 auto;padding:0 32px}
+.appbody{display:grid;grid-template-columns:300px minmax(0,1fr);gap:28px;align-items:start;margin:26px auto 0}
+.sidebar{position:sticky;top:18px;align-self:start;max-height:calc(100vh - 36px);overflow:auto;
+  display:flex;flex-direction:column;gap:18px;padding-right:4px}
+.main{min-width:0}
+.sidehead{font-family:var(--sans);font-size:10.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--fa-muted);margin:4px 0 -4px}
+/* controls become a vertical filter panel (Field Atlas: map-settings panel) */
+.sidebar .controls{flex-direction:column;align-items:stretch;gap:12px;margin:0;padding:16px;
+  background:var(--fa-panel2);border:1px solid var(--fa-box-line);border-radius:0}
+.sidebar .controls .grp{width:100%}
+.sidebar .controls .grp:last-child{margin-left:0;flex-direction:row;flex-wrap:wrap;gap:8px}
+.sidebar .controls select{min-width:0;width:100%}
+.sidebar label.lbl{color:var(--fa-muted)}
+.sidebar .controls .toggle{width:100%;border-color:var(--fa-line2)}
+.sidebar .controls .toggle button{flex:1;color:var(--fa-muted);font-size:12px}
+.sidebar .controls .toggle button+button{border-left-color:var(--fa-line2)}
+.sidebar .controls .toggle button.on{background:var(--fa-accent);color:#fff}
+.sidebar .controls .grp:last-child button{flex:1 1 auto;border-color:var(--fa-line2);color:var(--fa-ink2)}
+/* tabs become a vertical section nav */
+.sidebar .tabs{flex-direction:column;gap:2px;margin:0;border-bottom:none;background:var(--fa-panel);
+  border:1px solid var(--fa-box-line);border-radius:0;padding:8px}
+.sidebar .tabs button{width:100%;text-align:left;border-bottom:none;border-radius:6px;margin:0;padding:10px 12px;font-size:13px;font-weight:600;color:var(--fa-muted)}
+.sidebar .tabs button:hover{background:rgba(184,86,49,.07);color:var(--fa-ink2)}
+.sidebar .tabs button.on{background:#fff;color:var(--fa-accent);font-weight:700;box-shadow:inset 3px 0 0 var(--fa-accent)}
+/* content blocks */
+.sideblock{background:var(--fa-panel);border:1px solid var(--fa-box-line);border-radius:0;padding:16px}
+.sideblock h3{margin:0 0 10px;font-size:14px;font-family:var(--serif);font-weight:600;color:var(--fa-ink2)}
+.county{display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:7px 0;border-bottom:1px dashed var(--fa-line2)}
+.county:last-of-type{border-bottom:none}
+.county .nm{font-weight:700;color:var(--fa-ink2);font-size:13px}
+.county .seat{font-size:11.5px;color:var(--fa-muted)}
+.county .pop{font-variant-numeric:tabular-nums;font-size:12.5px;color:var(--fa-muted)}
+.sideblock .tot{display:flex;justify-content:space-between;align-items:baseline;margin-top:10px;padding-top:10px;border-top:2px solid var(--fa-line2);font-size:12px;color:var(--fa-muted)}
+.sideblock .tot b{font-variant-numeric:tabular-nums;color:var(--fa-ink2);font-size:13px;font-weight:700}
+.sideblock.sources p{margin:0 0 8px;font-size:12px;color:var(--fa-muted);line-height:1.5}
+.sideblock.sources p:last-child{margin-bottom:0}
+/* responsive: collapse rail above main */
+@media(max-width:1080px){
+  .appbody{grid-template-columns:1fr;gap:20px}
+  .sidebar{position:static;max-height:none;overflow:visible}
+  .sidebar .tabs{flex-direction:row;flex-wrap:wrap}
+  .sidebar .tabs button{width:auto}
+  .sidebar .tabs button.on{box-shadow:none;border-bottom:3px solid var(--fa-accent)}
+}
+@media(max-width:640px){.shell{padding:0 18px}}
+
+/* ---------- KPI summary cards ("Field Atlas") ---------- */
+.kpis-fa{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-top:14px}
+@media(max-width:760px){.kpis-fa{grid-template-columns:repeat(2,1fr)}}
+.kpi-fa{background:#fff;border:1px solid var(--fa-box-line);border-radius:0;border-top:2px solid var(--fa-teal);padding:16px}
+.kpi-fa .l{font:700 9.5px var(--sans);letter-spacing:.06em;text-transform:uppercase;color:var(--fa-muted);margin:0 0 6px}
+.kpi-fa .v{font:600 30px var(--serif);color:var(--fa-ink2);font-variant-numeric:tabular-nums;line-height:1.1}
+.kpi-fa .d{font:600 12.5px var(--sans);margin-top:4px;color:var(--fa-bad)}
+.kpi-fa .d.down{color:var(--fa-good)}
+
+/* ---------- section numerals ("Field Atlas" §NN labels) ---------- */
+.sec-h{display:flex;align-items:baseline;gap:10px}
+.sec-h .secnum{font-family:var(--serif);font-weight:600;font-size:13px;color:var(--fa-accent2)}
+
+/* ---------- ranked burden table ("Field Atlas") ---------- */
+.tablewrap.rank-wrap{border:1px solid var(--fa-box-line);border-radius:0}
+#rankTable thead tr{background:var(--fa-panel2)}
+#rankTable th{color:var(--fa-ink2);border-bottom:2px solid var(--fa-line2)}
+#rankTable td{border-bottom:1px solid var(--fa-line2)}
+#rankTable td:first-child{font-weight:600;color:var(--fa-ink2)}
+#rankTable tbody tr:nth-child(even){background:transparent}
+#rankTable tbody tr:nth-child(odd){background:var(--fa-panel)}
+#rankTable tbody tr:hover{background:var(--fa-panel2)}
+#rankTable tbody tr:last-child td{border-bottom:none}
+.pill-fa{display:inline-block;padding:2px 8px;border-radius:4px;font-size:12px;font-weight:700}
+
+/* ===== condition deep-dives ===== */
+.dd-list{display:flex;flex-direction:column;gap:10px;margin-top:18px}
+.dd{background:#fff;border:1px solid var(--box-line);border-radius:0;overflow:hidden}
+.dd[open]{border-color:var(--box-line)}
+.dd>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:14px;padding:15px 18px}
+.dd>summary::-webkit-details-marker{display:none}
+.dd>summary:hover{background:rgba(189,93,58,.045)}
+.dd>summary:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.dd-name{font-family:var(--serif);font-size:18px;font-weight:600;color:var(--ink2);flex:1;line-height:1.2}
+.dd-meta{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.dd-stat{font-variant-numeric:tabular-nums;font-size:13px;color:var(--accent);font-weight:700;white-space:nowrap}
+.dd-grp{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:3px 8px;white-space:nowrap}
+.dd-x{width:10px;height:10px;border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);transform:rotate(45deg);transition:transform .18s ease;flex-shrink:0;margin-left:2px}
+.dd[open] .dd-x{transform:rotate(-135deg)}
+.dd-body{padding:2px 18px 18px;border-top:1px solid var(--line)}
+.dd-sec{margin-top:15px}
+.dd-sec h4{margin:0 0 4px;font-family:var(--sans);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--teal)}
+.dd-sec p{margin:0;max-width:82ch;font-size:15.5px;line-height:1.62;color:#4A4030}
+.dd-data{margin-top:16px;padding:13px 15px;background:var(--panel);border:1px solid var(--box-line);border-radius:0;font-size:14px;line-height:1.56;color:#574B39}
+.dd-data-l{display:block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--accent2);margin-bottom:4px}
+.dd-data .stat{color:var(--accent);font-weight:700}
+@media(max-width:620px){.dd-name{font-size:16px}.dd>summary{flex-wrap:wrap}.dd-meta{flex-wrap:wrap;gap:6px}}
+/* ===== context: the 'why' ===== */
+.ctx-intro{max-width:76ch;font-size:16.5px;line-height:1.62;color:#574B39;margin:0 0 6px}
+.ctx{display:grid;grid-template-columns:210px 1fr;gap:24px;align-items:start;padding:22px 0;border-top:1px solid var(--line)}
+.ctx-fig{background:var(--panel2);border:1px solid var(--box-line);border-left:3px solid var(--accent);border-radius:0;padding:14px 16px}
+.ctx-fig b{display:block;font-family:var(--serif);font-size:27px;font-weight:600;color:var(--ink2);font-variant-numeric:tabular-nums;line-height:1.05}
+.ctx-fig span{display:block;font-size:12.5px;color:var(--muted);margin-top:6px;line-height:1.42}
+.ctx-txt h3{margin:0 0 8px;font-size:20px}
+.ctx-txt p{margin:0 0 10px;max-width:80ch;font-size:15.5px;line-height:1.64;color:#4A4030}
+.ctx-txt p:last-child{margin-bottom:0}
+.ctx-src{margin-top:24px;padding-top:16px;border-top:2px solid var(--line2)}
+.ctx-src h4{margin:0 0 9px;font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-family:var(--sans);font-weight:700}
+.ctx-src ul{margin:0;padding-left:18px}
+.ctx-src li{font-size:13px;margin-bottom:7px;color:#574B39;line-height:1.5}
+@media(max-width:720px){.ctx{grid-template-columns:1fr;gap:12px}}
+</style>
+</head>
+<body>
+<header>
+  <div class="shell">
+    <div class="kicker-row">
+      <p class="kicker">Rio Grande Valley — Public Health Data</p>
+      <p class="voltag">Vol. II &middot; Updated June 2026</p>
+    </div>
+    <div class="wordmark-row">
+      <div class="wordmark-glyph" aria-hidden="true"><span></span><span></span><span></span><span></span></div>
+      <h1>RGV Public Health Database</h1>
+    </div>
+    <p class="subhead">County and census-tract chronic-disease prevalence for Cameron, Hidalgo, Starr, and Willacy counties — built on CDC PLACES, BRFSS, and Texas hospital-discharge data.</p>
+    <div class="provenance-line">County data, CDC PLACES 2024 (BRFSS 2022) &middot; Tract layer, CDC PLACES 2025, live &middot; Geometry, Census TIGERweb</div>
+  </div>
+</header>
+
+<div class="shell appbody">
+  <aside class="sidebar" aria-label="Atlas navigation and settings">
+  <div class="sidehead">Map settings</div>
+  <div class="controls" role="region" aria-label="Map controls">
+    <div class="grp">
+      <label class="lbl" for="metric">Measure</label>
+      <select id="metric" aria-label="Primary health measure"></select>
+    </div>
+    <div class="grp">
+      <label class="lbl">Geography</label>
+      <div class="toggle" id="levelToggle" role="group" aria-label="Geography level">
+        <button data-lvl="county" class="on">County</button>
+        <button data-lvl="tract">Census tract (live)</button>
+      </div>
+    </div>
+    <div class="grp">
+      <label class="lbl">Rate</label>
+      <div class="toggle" id="rateToggle" role="group" aria-label="Rate type">
+        <button data-rate="crude" class="on">Crude</button>
+        <button data-rate="adj">Age-adjusted</button>
+      </div>
+    </div>
+    <div class="grp">
+      <label class="lbl" for="biv">Bivariate</label>
+      <select id="biv" aria-label="Second measure for bivariate map"><option value="">— off —</option></select>
+    </div>
+    <div class="grp">
+      <button id="btnCsv" aria-label="Download data as CSV">CSV</button>
+      <button id="btnPng" aria-label="Save map as image">Map PNG</button>
+      <button id="btnPrint" aria-label="Print or save as PDF">Print/PDF</button>
+    </div>
+  </div>
+  <div class="sidehead">Sections</div>
+  <div class="tabs" role="tablist">
+    <button class="on" data-tab="overview" role="tab">Overview</button>
+    <button data-tab="conditions" role="tab">Conditions</button>
+    <button data-tab="mortality" role="tab">Mortality &amp; complications</button>
+    <button data-tab="determinants" role="tab">Social drivers</button>
+    <button data-tab="context" role="tab">The why</button>
+    <button data-tab="trajectory" role="tab">Trajectory</button>
+    <button data-tab="research" role="tab">Recent research</button>
+    <button data-tab="data" role="tab">Data table</button>
+    <button data-tab="methods" role="tab">Methods &amp; sources</button>
+  </div>
+  <div class="sideblock region">
+    <h3>The four counties</h3>
+    <div class="county"><span class="nm">Cameron</span><span class="pop">426,710</span></div>
+    <div class="county"><span class="nm">Hidalgo</span><span class="pop">898,471</span></div>
+    <div class="county"><span class="nm">Starr</span><span class="pop">65,934</span></div>
+    <div class="county"><span class="nm">Willacy</span><span class="pop">20,037</span></div>
+    <div class="tot"><span>Region total (adults 18+)</span><b>990,740</b></div>
+  </div>
+  <div class="sideblock sources">
+    <h3>Data &amp; sources</h3>
+    <p>County estimates: CDC PLACES 2024 (BRFSS 2022). Census-tract layer: CDC PLACES 2025, streamed live. Geometry: Census TIGERweb.</p>
+    <p>Full methodology and citations are in the Methods &amp; sources section.</p>
+  </div>
+  </aside>
+  <main class="main">
+  <div class="grid">
+    <div class="card" style="position:relative">
+      <h2 id="mapTitle">Prevalence by county</h2>
+      <div class="sub" id="mapSub"></div>
+      <div id="mapFlag" class="flag hide"></div>
+      <div id="spinner" class="spinner hide">Loading live tract data…</div>
+      <div id="map" role="img" aria-label="Choropleth map of the Rio Grande Valley"></div>
+      <div class="srcline"><b>Source</b>CDC PLACES 2024 (BRFSS 2022), county estimates; tract layer streamed from CDC PLACES 2025 (BRFSS 2023). Geometry: Census TIGERweb. Accessed June 2026.</div>
+    </div>
+    <div class="card">
+      <h2 id="cmpTitle">County comparison</h2>
+      <div class="sub">Selected measure vs. Texas &amp; U.S. reference</div>
+      <div class="barwrap"><canvas id="bar"></canvas></div>
+      <div class="kpis" id="kpis"></div>
+      <div class="srcline"><b>Source</b>CDC PLACES 2024 · BRFSS 2022. Texas &amp; U.S. reference values are rounded national/state adult estimates. Accessed June 2026.</div>
+    </div>
+  </div>
+
+
+  <div class="section" id="tab-overview" role="tabpanel">
+    <h2>A young population carrying an old population's disease load</h2>
+    <p class="lede">Despite a median age in the low 30s, the RGV posts adult chronic-disease rates that rival much older U.S. populations, on top of the highest uninsured rates in the country. The gradient is consistent across all four counties, heaviest in <strong>Starr</strong> (poorest, most rural). Because the population is young, <em>age-adjusted</em> rates run higher than crude rates for most conditions — the age-specific risk is even more elevated than the headline numbers suggest.</p>
+    <h3 class="sec-h"><span class="secnum">&sect;02</span> Health burden, at a glance</h3>
+    <div class="kpis-fa" id="overviewKpis"></div>
+    <h3 class="sec-h"><span class="secnum">&sect;03</span> Adult health burden, ranked by excess over the U.S.</h3>
+    <div class="sub">4-county population-weighted crude prevalence, CDC PLACES 2024. Estimated affected = prevalence × adult population.</div>
+    <div class="tablewrap rank-wrap" style="max-height:none"><table class="dt" id="rankTable">
+      <thead><tr><th>Measure</th><th>RGV avg</th><th>Texas</th><th>U.S.</th><th>RGV ÷ U.S.</th><th>Est. adults affected</th><th>Highest county</th></tr></thead>
+      <tbody></tbody></table></div>
+  </div>
+
+  <div class="section hide" id="tab-conditions" role="tabpanel"></div>
+
+  <div class="section hide" id="tab-mortality" role="tabpanel">
+    <h2>Mortality &amp; diabetes complications</h2>
+    <p class="lede">Chronic disease drives mortality region-wide. Heart disease is the leading cause of death; the age-adjusted heart-disease mortality rate for the Lower RGV (~183 per 100,000) is comparable to South Texas overall, while documented stroke mortality (~33 per 100,000) runs below the South Texas average. The starkest county-level signal is in <strong>diabetes complications</strong>: amputations as a share of diabetes-related hospital discharges far exceed the Texas benchmark of ~5%, rising with rurality.</p>
+    <div class="grid" style="margin-top:6px">
+      <div class="card"><h2>Diabetes-related amputations</h2><div class="sub">% of diabetes-related hospital discharges, 2023 (Texas ≈ 5%)</div><div class="barwrap" style="height:260px"><canvas id="ampChart"></canvas></div></div>
+      <div class="card"><h2>Avg. principal cost per diabetes discharge</h2><div class="sub">USD, RGV counties</div><div class="barwrap" style="height:260px"><canvas id="costChart"></canvas></div></div>
+    </div>
+    <h3>Leading causes of death (regional context)</h3>
+    <div class="tablewrap" style="max-height:none"><table class="dt" id="mortTable">
+      <thead><tr><th>Cause</th><th>Rank</th><th>Age-adjusted rate / 100k (Lower RGV)</th><th>Note</th></tr></thead><tbody></tbody></table></div>
+    <p class="note" style="margin-top:10px">Amputation and cost figures: Cureus 2024 (Texas hospital-discharge data). Mortality rates: South Texas Health Status Review (Lower RGV region). Per-county cause-specific death rates vary year to year; consult Texas DSHS / CDC WONDER for the latest.</p>
+  </div>
+
+  <div class="section hide" id="tab-determinants" role="tabpanel">
+    <h2>Social drivers of health</h2>
+    <p class="lede">The RGV's disease burden is inseparable from its structural context: deep poverty, the nation's highest uninsured rates, widespread food insecurity, and near-maximal social vulnerability. All four counties sit in the most vulnerable decile of the CDC Social Vulnerability Index, and much of the population lives in <em>colonias</em> — unincorporated settlements with limited infrastructure and health access.</p>
+    <div class="grid3" id="sdohCards" style="margin-top:6px"></div>
+    <h3>Does deprivation track disease? (county scatter)</h3>
+    <div class="sub">Uninsured rate (x) vs. selected measure (y). Bubble size = adult population.</div>
+    <div class="barwrap" style="height:320px"><canvas id="scatter"></canvas></div>
+    <div class="srcline"><b>Source</b>CDC PLACES 2024 (health measures); ACS 2018–2022 (uninsured rate). Bubble size = adult population. Accessed June 2026.</div>
+  </div>
+
+  <div class="section hide" id="tab-context" role="tabpanel">
+    <h2>The &lsquo;why&rsquo; &mdash; the forces behind the Valley&rsquo;s health</h2>
+    <p class="ctx-intro">The numbers on this site describe a young population &mdash; median age in the low 30s &mdash; carrying the chronic-disease load of a much older one. That gap is not bad luck or personal failing. It is the predictable result of how people in the Rio Grande Valley live, work, and reach care. These are the structural forces underneath the statistics &mdash; the reasons disease here is common, caught late, and hard to control.</p>
+
+    <div class="ctx">
+      <div class="ctx-fig"><b>&asymp;500,000</b><span>Texans live in colonias &mdash; about 14% of the RGV&rsquo;s population</span></div>
+      <div class="ctx-txt">
+        <h3>Colonias: growth without infrastructure</h3>
+        <p>Roughly half a million people live in <em>colonias</em> &mdash; unincorporated border settlements that grew from the 1950s onward, when developers sold cheap, often flood-prone farmland in small lots without water lines, sewer, drainage, or paved roads. In the Rio Grande Valley, colonias are home to about 14% of residents.</p>
+        <p>Infrastructure has lagged for decades. A 2015 Federal Reserve Bank of Dallas review found that fewer than half of Texas&rsquo;s roughly 2,300 colonias had the full set of basic services; statewide, only about half of colonia residents have sewer service, and many rely on non-tap water. Unreliable water, distance from clinics, and substandard housing become real health costs &mdash; and they cluster in exactly the places where diabetes, uninsurance, and food insecurity run highest.</p>
+      </div>
+    </div>
+
+    <div class="ctx">
+      <div class="ctx-fig"><b>28&ndash;44%</b><span>uninsured in the RGV, from all residents to working-age adults</span></div>
+      <div class="ctx-txt">
+        <h3>Little coverage, few providers</h3>
+        <p>The Valley has some of the highest uninsured rates in the United States. About 28% of Hidalgo County residents were uninsured in 2024; among working-age adults (18&ndash;64) &mdash; the group shown on the map &mdash; the share is higher, roughly 36&ndash;44%. Because Texas has not expanded Medicaid, many adults fall into a coverage gap: earning too much for Medicaid but unable to afford a marketplace plan.</p>
+        <p>Coverage is only half the problem; supply is the other. The region is a federally designated medically underserved area with one of the lowest physician-to-patient ratios in the state. The result is care that arrives late &mdash; diabetes and high blood pressure are often found only after they have already done damage.</p>
+      </div>
+    </div>
+
+    <div class="ctx">
+      <div class="ctx-fig"><b>&gt;20%</b><span>of Valley residents are food insecure &mdash; above the national rate</span></div>
+      <div class="ctx-txt">
+        <h3>Poverty and the food environment</h3>
+        <p>Deep poverty shapes daily health decisions. More than one in five Valley residents is food insecure, and the food that is cheapest and closest is usually the least healthy: fresh produce can be costly or far away, while calorie-dense packaged food is everywhere.</p>
+        <p>This is a central engine of the region&rsquo;s obesity and diabetes. The Food Bank of the Rio Grande Valley distributes tens of millions of meals a year across the four counties &mdash; a measure of both the need and the community response. Food insecurity here is better understood as a feature of the local economy than as an individual failing.</p>
+      </div>
+    </div>
+
+    <div class="ctx">
+      <div class="ctx-fig"><b>&asymp;49%</b><span>of South Texas adults have bought medicine in Mexico</span></div>
+      <div class="ctx-txt">
+        <h3>Care across the border</h3>
+        <p>The border is part of how Valley families get care. With Mexico minutes away and insurance scarce, many residents cross for medication, dental work, and doctor visits. In one population-based South Texas study, about half of adults reported having bought medicine in Mexico, where the same drug can cost a fraction of the U.S. price.</p>
+        <p>This cross-border care is a real resource for families priced out of the U.S. system. It also splits prescriptions, records, and follow-up across two countries, complicating continuity of care &mdash; and it shows how far people will go to manage conditions they cannot afford to treat at home.</p>
+      </div>
+    </div>
+
+    <div class="ctx">
+      <div class="ctx-fig"><b>1990s</b><span>Lower-RGV promotoras first organized across programs</span></div>
+      <div class="ctx-txt">
+        <h3>Promotoras: the Valley&rsquo;s own answer</h3>
+        <p>The Valley helped pioneer one of public health&rsquo;s most effective ideas: the <em>promotora</em>, or community health worker &mdash; a trusted neighbor, usually bilingual and from the community, who connects families to care, explains conditions in plain language, and follows up where clinics cannot reach. Lower-RGV promotoras organized across programs as far back as the 1990s.</p>
+        <p>Today the model is formally trained and certified through institutions like South Texas College and UTRGV. Where trust, language, and distance are barriers, promotoras are often the most reliable bridge between the health system and the people it is meant to serve.</p>
+      </div>
+    </div>
+
+    <div class="ctx">
+      <div class="ctx-fig"><b>7.2%</b><span>COPD in rural Starr &amp; Willacy &mdash; highest in the region, despite low smoking</span></div>
+      <div class="ctx-txt">
+        <h3>Land, work, and weather</h3>
+        <p>Geography and labor leave their own marks. Agricultural and outdoor work expose many residents to dust, pesticides, and extreme heat &mdash; part of why chronic lung disease runs highest in the rural counties even though smoking is low. Long, hot summers and few safe places to walk or play discourage the physical activity that prevents diabetes and heart disease.</p>
+        <p>These exposures rarely show up in a single statistic, but they sit behind several of them &mdash; from COPD in Starr and Willacy to the region-wide rates of physical inactivity.</p>
+      </div>
+    </div>
+
+    <div class="ctx">
+      <div class="ctx-fig"><b>2016</b><span>UTRGV welcomed the first class of its School of Medicine</span></div>
+      <div class="ctx-txt">
+        <h3>A region building its own capacity</h3>
+        <p>None of this is fixed in place. After generations of underinvestment, the Valley is building its own health infrastructure: UTRGV opened its School of Medicine in 2016, new NIH-funded research centers are targeting the region&rsquo;s cancers and diabetes, and community programs increasingly focus on prevention and the built environment.</p>
+        <p>The burden is persistent &mdash; but because it is structural rather than inevitable, it is also changeable. Understanding the &lsquo;why&rsquo; is the first step toward changing it.</p>
+      </div>
+    </div>
+
+    <div class="ctx-src">
+      <h4>Sources for this section</h4>
+      <ul>
+        <li><a href="https://www.texastribune.org/2023/05/05/texas-water-infrastructure-colonias/" target="_blank" rel="noopener">Texas Tribune: Texas colonias and running water</a> (2023); <a href="https://www.tdhca.texas.gov/background-colonias" target="_blank" rel="noopener">TDHCA: Background on the Colonias</a>; Federal Reserve Bank of Dallas colonias review (2015).</li>
+        <li><a href="https://kffhealthnews.org/news/article/uninsured-texas-rio-grande-valley-strain-local-health-systems-medicaid-aca/" target="_blank" rel="noopener">KFF Health News: uninsured in the Rio Grande Valley</a>; <a href="https://texas2036.org/posts/where-are-the-uninsured-located-in-texas-part-1-tx-county-view/" target="_blank" rel="noopener">Texas 2036: county uninsured estimates</a>.</li>
+        <li><a href="https://map.feedingamerica.org/" target="_blank" rel="noopener">Feeding America: Map the Meal Gap</a>; Food Bank of the Rio Grande Valley.</li>
+        <li><a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC3097406/" target="_blank" rel="noopener">Cross-Border Utilization of Health Care: a population-based study in South Texas</a> (PMC).</li>
+        <li><a href="https://nashp.org/state-tracker/state-community-health-worker-policies/texas/" target="_blank" rel="noopener">NASHP: Texas community health worker (promotora) policy</a>; South Texas College CHW program.</li>
+        <li>CDC PLACES 2024 &mdash; county prevalence shown elsewhere on this site (COPD figure).</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="section hide" id="tab-trajectory" role="tabpanel">
+    <h2>Trajectory &amp; data vintage</h2>
+    <p class="lede">A true multi-year time series requires joining successive PLACES releases; this tool exposes the two most recent vintages — county estimates from the <strong>2024 release (BRFSS 2022)</strong> and the live tract layer from the <strong>2025 release (BRFSS 2023)</strong>. Longitudinally, the burden has been <strong>persistent and rising</strong>: the Cureus analysis of 2012–2022 hospital data found RGV diabetes and obesity climbing throughout the decade, consistently far above national levels, with no county converging toward the U.S. mean.</p>
+    <div class="barwrap" style="height:300px;max-width:760px"><canvas id="trajChart"></canvas></div>
+    <p class="note" style="margin-top:8px">Crude vs. age-adjusted gap shown per measure. Where age-adjusted exceeds crude, the population's youth is masking even higher age-specific risk — a leading indicator that burden will grow as the population ages. Want a full release-over-release series? It can be wired to pull every PLACES vintage live.</p>
+  </div>
+
+  <div class="section hide" id="tab-research" role="tabpanel">
+    <h2>Recent research on RGV health</h2>
+    <p class="lede">A live feed of the newest peer-reviewed studies about Rio Grande Valley health, pulled on demand from <strong>Europe PMC</strong> (PubMed / MEDLINE), sorted most-recent first. Filter by topic, or open any study for the full record. If you're offline, a curated list of landmark RGV studies is shown instead.</p>
+    <div class="research-controls">
+      <button id="rRefresh">Refresh</button>
+      <span id="researchChips"></span>
+    </div>
+    <div id="researchStatus" class="note" style="margin-bottom:12px"></div>
+    <div id="researchList" class="rgrid"></div>
+  </div>
+
+  <div class="section hide" id="tab-data" role="tabpanel">
+    <h2>Full data table</h2>
+    <div class="sub">CDC PLACES 2024 adult prevalence (%) with 95% confidence intervals. Click a header to sort. Crude/age-adjusted follows the toggle above. Red = above U.S. reference.</div>
+    <div class="tablewrap"><table class="dt" id="dataTable"><thead></thead><tbody></tbody></table></div>
+  </div>
+
+  <div class="section hide" id="tab-methods" role="tabpanel">
+    <h2>Methods &amp; data sources</h2>
+    <p class="src"><strong>County prevalence (embedded):</strong> CDC PLACES 2024 release — county-level model-based small-area estimates from BRFSS 2022, the 2020 Census, and ACS 2018–2022. Percent of adults 18+; both crude and age-adjusted with 95% CIs.</p>
+    <p class="src"><strong>Census-tract layer (live):</strong> streamed at runtime from the CDC PLACES 2025 release tract dataset (<code>cwsq-ngmh</code>, crude prevalence, BRFSS 2023) and joined to Census <strong>TIGERweb</strong> 2023 tract geometry. Requires internet; tract estimates are crude only (age-adjustment is not published at tract level). If a layer can't load, the app falls back to the county view and all other panels keep working.</p>
+    <p class="src"><strong>Chronic kidney disease</strong> is not published in the mappable PLACES measure set, so it is covered narratively (see Conditions) rather than mapped, to avoid fabricated county values.</p>
+    <p class="src"><strong>Complications &amp; cost:</strong> Cureus 2024 (Texas hospital-discharge data). <strong>Mortality:</strong> South Texas Health Status Review. <strong>Social drivers:</strong> ACS 2018–2022 (poverty, income), Feeding America (food insecurity, approx.), CDC SVI. Poverty/income/food-insecurity values are rounded approximations and labeled as reference. <strong>Texas &amp; U.S. benchmark rows</strong> are rounded national/state adult estimates (BRFSS/PLACES) provided for comparison.</p>
+    <p class="src"><strong>The "44%" figure:</strong> the widely-cited Cureus diabetes prevalence (~44%) comes from <em>hospitalized</em> patients, not the general population, and is not comparable to the population-prevalence estimates mapped here. It appears in the diabetes narrative for context only.</p>
+    <h3>County identifiers</h3>
+    <p class="src">Cameron 48061 · Hidalgo 48215 · Starr 48427 · Willacy 48489.</p>
+    <h3>Sources</h3>
+    <ul class="src" id="srcList"></ul>
+  </div>
+</main>
+</div>
+
+<footer class="shell">RGV Health Atlas v2 · CDC PLACES 2024/2025 · Census TIGERweb · Texas DSHS · Cureus 2024 · ACS · CDC SVI · Generated June 2026 · For public-health analysis and education; not official surveillance.</footer>
+
+<script>
+/* ===== COUNTY DATA — CDC PLACES 2024 (BRFSS 2022). v = [crudePrev, adjPrev, ciLo, ciHi] (crude CI) ===== */
+const COUNTIES={
+ "48061":{name:"Cameron",pop:426710,pop18:306297,seat:"Brownsville"},
+ "48215":{name:"Hidalgo",pop:898471,pop18:624451,seat:"Edinburg / McAllen"},
+ "48427":{name:"Starr",pop:65934,pop18:44621,seat:"Rio Grande City"},
+ "48489":{name:"Willacy",pop:20037,pop18:15371,seat:"Raymondville"}};
+const DATA={
+ diabetes:{label:"Diagnosed diabetes",grp:"Chronic disease",us:11.5,tx:12.6,mid:"DIABETES",
+  v:{"48061":[18.3,17.5,16.3,20.6],"48215":[17.4,17.7,15.3,19.6],"48427":[20.0,20.5,17.6,22.6],"48489":[18.8,19.0,16.3,21.3]}},
+ obesity:{label:"Obesity (BMI ≥30)",grp:"Chronic disease",us:33.9,tx:34.4,mid:"OBESITY",
+  v:{"48061":[40.3,41.0,35.4,45.0],"48215":[44.2,45.0,39.5,49.3],"48427":[45.0,45.8,36.4,53.6],"48489":[43.2,44.4,34.1,52.7]}},
+ bphigh:{label:"High blood pressure",grp:"Chronic disease",us:32.3,tx:32.6,mid:"BPHIGH",
+  v:{"48061":[34.0,32.9,31.0,37.1],"48215":[33.4,34.1,30.4,36.6],"48427":[36.6,37.5,32.5,40.8],"48489":[36.5,36.9,32.2,41.0]}},
+ highchol:{label:"High cholesterol",grp:"Chronic disease",us:32.4,tx:32.3,mid:"HIGHCHOL",
+  v:{"48061":[36.5,33.5,33.2,39.7],"48215":[35.3,33.7,32.1,38.7],"48427":[37.2,35.2,33.0,41.4],"48489":[36.4,34.1,32.0,40.9]}},
+ chd:{label:"Coronary heart disease",grp:"Chronic disease",us:6.0,tx:5.8,mid:"CHD",
+  v:{"48061":[7.1,6.5,6.2,8.1],"48215":[6.5,6.6,5.7,7.5],"48427":[7.6,7.8,6.6,8.6],"48489":[7.7,7.5,6.7,8.7]}},
+ stroke:{label:"Stroke",grp:"Chronic disease",us:3.4,tx:3.4,mid:"STROKE",
+  v:{"48061":[3.9,3.6,3.4,4.4],"48215":[3.6,3.7,3.2,4.1],"48427":[4.2,4.4,3.7,4.8],"48489":[4.2,4.2,3.7,4.7]}},
+ copd:{label:"COPD",grp:"Chronic disease",us:6.6,tx:6.2,mid:"COPD",
+  v:{"48061":[6.2,5.9,5.2,7.4],"48215":[5.9,6.0,4.9,7.0],"48427":[7.2,7.3,5.9,8.4],"48489":[7.2,7.1,6.0,8.3]}},
+ casthma:{label:"Current asthma",grp:"Chronic disease",us:9.7,tx:8.6,mid:"CASTHMA",
+  v:{"48061":[8.7,8.7,7.6,9.8],"48215":[8.7,8.7,7.7,9.9],"48427":[9.3,9.3,8.2,10.6],"48489":[8.9,8.9,7.8,10.1]}},
+ cancer:{label:"Cancer (excl. skin)",grp:"Chronic disease",us:6.8,tx:5.6,mid:"CANCER",
+  v:{"48061":[4.9,4.6,4.4,5.4],"48215":[4.4,4.5,4.0,4.9],"48427":[4.1,4.2,3.6,4.5],"48489":[4.6,4.5,4.1,5.2]}},
+ arthritis:{label:"Arthritis",grp:"Chronic disease",us:24.6,tx:22.0,mid:"ARTHRITIS",
+  v:{"48061":[20.1,19.0,17.9,22.4],"48215":[20.2,20.7,18.1,22.7],"48427":[22.4,23.0,19.6,25.3],"48489":[22.3,22.2,19.4,25.2]}},
+ depression:{label:"Depression",grp:"Mental & behavioral",us:20.5,tx:19.4,mid:"DEPRESSION",
+  v:{"48061":[18.9,19.1,16.4,21.6],"48215":[20.2,20.0,17.6,23.3],"48427":[21.2,21.0,18.0,24.7],"48489":[19.5,19.4,16.3,23.0]}},
+ mhlth:{label:"Frequent mental distress",grp:"Mental & behavioral",us:15.4,tx:15.7,mid:"MHLTH",
+  v:{"48061":[16.5,16.8,14.4,18.9],"48215":[18.2,18.0,15.8,20.8],"48427":[19.5,19.2,16.8,22.3],"48489":[18.4,18.3,16.0,20.8]}},
+ ghlth:{label:"Fair or poor general health",grp:"Health status",us:13.4,tx:17.9,mid:"GHLTH",
+  v:{"48061":[31.2,30.9,26.5,36.2],"48215":[33.7,34.1,28.9,38.9],"48427":[40.3,40.8,34.4,46.3],"48489":[37.1,37.5,31.8,42.1]}},
+ disability:{label:"Any disability",grp:"Health status",us:27.0,tx:27.6,mid:"DISABILITY",
+  v:{"48061":[37.0,36.1,32.2,41.9],"48215":[39.4,39.3,34.4,44.8],"48427":[45.5,45.3,39.0,51.7],"48489":[43.4,42.8,37.2,49.2]}},
+ access2:{label:"Uninsured (adults 18–64)",grp:"Access & risk factors",us:13.9,tx:22.6,mid:"ACCESS2",
+  v:{"48061":[35.9,36.3,29.0,43.7],"48215":[37.4,37.5,29.7,45.3],"48427":[43.5,43.7,35.5,52.0],"48489":[40.8,40.7,33.6,47.8]}},
+ lpa:{label:"No leisure physical activity",grp:"Access & risk factors",us:25.3,tx:26.0,mid:"LPA",
+  v:{"48061":[36.9,36.8,31.8,42.2],"48215":[37.5,38.0,32.3,43.2],"48427":[47.0,47.6,40.1,54.1],"48489":[44.1,44.5,37.3,50.6]}},
+ csmoking:{label:"Current smoking",grp:"Access & risk factors",us:14.4,tx:13.0,mid:"CSMOKING",
+  v:{"48061":[13.0,13.6,10.4,15.8],"48215":[13.3,13.8,10.7,16.2],"48427":[16.9,17.6,13.6,20.3],"48489":[16.4,17.4,13.4,19.5]}}
+};
+const FIPS=Object.keys(COUNTIES), MK=Object.keys(DATA);
+
+/* social drivers (approx; ACS 2018-22, Feeding America, CDC SVI) */
+const SDOH={
+ "48061":{pov:26.6,mhi:43874,food:18,svi:0.96},
+ "48215":{pov:28.0,mhi:45294,food:20,svi:0.97},
+ "48427":{pov:28.9,mhi:33344,food:22,svi:1.00},
+ "48489":{pov:29.4,mhi:36250,food:20,svi:0.98}};
+
+/* diabetes complications (Cureus 2024) */
+const AMP={"48061":7.8,"48215":6.8,"48427":11.0,"48489":12.9};
+const COST={"48061":1603.27,"48215":1892.45,"48427":2247.64,"48489":1938.45};
+
+const MORT=[
+ ["Heart disease",1,"182.9","Leading cause; ≈ South Texas overall"],
+ ["Cancer (malignant neoplasms)",2,"~117 (HSA)","Lower all-site rate; cervical/liver excess"],
+ ["Diabetes mellitus",3,"Elevated","RGV among highest diabetes death burden in TX"],
+ ["Stroke (cerebrovascular)",4,"33.4","Below South Texas average"],
+ ["Chronic lower respiratory disease",5,"Elevated (rural)","Tracks COPD prevalence"],
+ ["Unintentional injury",6,"—","National top-5 cause"]
+];
+
+const NAR={
+ diabetes:`<span class="stat">~1 in 5 adults</span> diagnosed in every county, ~60–80% above the U.S. 11.5%, heaviest in <strong>Starr (20.0%)</strong>. Diagnosed only — true prevalence is higher. Diabetes is the engine of downstream disease here: it drives the nation-leading diabetes-amputation rates (Willacy ~12.9%, Starr ~11% of diabetes discharges). The viral "~44%" RGV figure is from hospitalized patients, not the general population.`,
+ obesity:`<span class="stat">40–45%</span> of adults vs ~34% nationally, peaking in <strong>Starr (45.0%)</strong>; childhood obesity is worse (≈ a third of Hidalgo boys overweight, among the nation's highest). The proximate driver of the region's diabetes/hypertension clustering, reinforced by ~20% food insecurity and limited safe activity space.`,
+ bphigh:`A third or more of adults, peaking in <strong>Starr (36.6%)</strong>/<strong>Willacy (36.5%)</strong>. Medication use is high (73–76%) but control is incomplete — the access gap captured by the uninsured measure.`,
+ highchol:`33–37%, above benchmark in every county; with hypertension, diabetes and obesity it completes a textbook cardiometabolic cluster.`,
+ chd:`Above the U.S. rate in three of four counties (<strong>Willacy 7.7%, Starr 7.6%</strong>). Heart disease is the leading cause of death region-wide.`,
+ stroke:`3.6–4.2%, edging above national, tracking hypertension/diabetes. Stroke mortality is reported below the South Texas average — prevalence and death can diverge.`,
+ copd:`Near/above U.S., highest in rural <strong>Starr & Willacy (7.2%)</strong> despite low smoking in Cameron/Hidalgo — occupational and environmental exposures.`,
+ casthma:`8.7–9.3%, modestly below national, but border air-quality and agricultural exposures keep it clinically relevant; pediatric asthma recurs in needs assessments.`,
+ cancer:`All-site (non-skin) prevalence is <span class="stat">below the U.S.</span> (~4–5% vs 6.8%) — a young-population artifact that masks site-specific excesses: the RGV has historically led the nation in <strong>cervical cancer</strong>, plus elevated liver/gallbladder cancers.`,
+ arthritis:`20–22% (below U.S. crude, young population), but age-adjusted Starr (23.0%) nears the national figure — elevated age-specific musculoskeletal burden tied to obesity and manual labor.`,
+ ckd:`<span class="stat">Chronic kidney disease is not published in the mappable PLACES set</span>, so it is not charted here — but it is a central RGV concern: CKD is a direct sequela of the region's exceptional diabetes and hypertension burden, and the Valley's high diabetes-amputation and dialysis demand are downstream signals. National adult CKD runs ~14% (mostly undiagnosed); in a population with ~18–20% diagnosed diabetes, the true CKD burden is materially higher. Treat the diabetes and hypertension numbers above as the leading indicators.`,
+ depression:`19–21%, near national, against some of Texas's thinnest behavioral-health infrastructure — a defining need-vs-supply gap.`,
+ mhlth:`Frequent mental distress 16–20%, highest in <strong>Starr (19.5%)</strong>; combined with provider shortage and uninsurance, a large unmet need.`,
+ ghlth:`Self-rated fair/poor health is <span class="stat">2–3× the U.S.</span>, reaching <strong>40.3% in Starr</strong> — one of the starkest disparities, tracking the poverty gradient.`,
+ disability:`37–46% vs national 27%, peaking in <strong>Starr (45.5%)</strong>; mobility/cognition limitations dominate, reflecting accumulated chronic-disease complications.`,
+ access2:`The defining structural driver: <span class="stat">36–44% of working-age adults uninsured</span>, ~triple the U.S. and roughly double Texas — concentrated in colonias and among agricultural/immigrant workers, delaying diagnosis and undermining control of every condition above.`,
+ lpa:`A third (47% in Starr) report no leisure-time activity — both cause and target; Valley programs increasingly focus on walkability and built environment.`,
+ csmoking:`At/below the U.S. in Cameron/Hidalgo (13%), higher in rural Starr (16.9%). Low smoking alongside high cardiovascular disease confirms metabolic — not tobacco — factors dominate the RGV risk profile.`
+};
+
+const SOURCES=[
+ ['CDC PLACES — Local Data for Better Health (2024 & 2025 releases)','https://www.cdc.gov/places/'],
+ ['CDC PLACES tract dataset cwsq-ngmh (data.cdc.gov)','https://data.cdc.gov/resource/cwsq-ngmh.json'],
+ ['Census TIGERweb tract geometry service','https://tigerweb.geo.census.gov/'],
+ ['Burden of Diabetes Mellitus in the Medically Underserved RGV (Cureus, 2024)','https://pmc.ncbi.nlm.nih.gov/articles/PMC11500487/'],
+ ['County Health Rankings & Roadmaps — Texas','https://www.countyhealthrankings.org/health-data/texas'],
+ ['The South Texas Health Status Review (NCBI Bookshelf)','https://www.ncbi.nlm.nih.gov/books/NBK543617/'],
+ ['CDC/ATSDR Social Vulnerability Index','https://www.atsdr.cdc.gov/place-health/php/svi/'],
+ ['U.S. Census Bureau QuickFacts (poverty & income)','https://www.census.gov/quickfacts/'],
+ ['DHR Health — "RGV Is Among the Unhealthiest Areas in America"','https://dhrresearch.org/rio-grande-valley-is-among-the-unhealthiest-areas-in-america/']
+];
+
+/* ===== state ===== */
+let rate=0, metric="diabetes", level="county", biv="";
+const tractGeo={}; // fips -> geojson features (cached)
+const tractData={}; // measureid -> {GEOID:[val,lo,hi,pop]}
+
+/* ===== helpers ===== */
+const val=(m,f)=>DATA[m].v[f][rate];
+const ci=(m,f)=>[DATA[m].v[f][2],DATA[m].v[f][3]];
+function pwAvg(m){let n=0,d=0;FIPS.forEach(f=>{n+=val(m,f)*COUNTIES[f].pop18;d+=COUNTIES[f].pop18;});return n/d;}
+function affected(m,f){return Math.round(val(m,f)/100*COUNTIES[f].pop18);}
+function totAffected(m){return FIPS.reduce((s,f)=>s+affected(m,f),0);}
+/* warm earth-tone sequential, lightness-ordered (colorblind-safe); t in [0,1], high=deep brick */
+function ramp(t){t=Math.max(0,Math.min(1,t));
+ const s=[[238,217,166],[228,184,110],[202,112,60],[158,64,38],[107,40,26]];
+ const seg=t*(s.length-1),i=Math.min(Math.floor(seg),s.length-2),f=seg-i;
+ const c=s[i].map((a,k)=>Math.round(a+(s[i+1][k]-a)*f));return `rgb(${c[0]},${c[1]},${c[2]})`;}
+function rangeFor(m,vals){const a=vals.slice().sort((x,y)=>x-y);return [a[0],a[a.length-1]];}
+/* bivariate 3x3 (warm terracotta × teal/sage) */
+const BIV=[["#efe6d0","#e2b98c","#cf7a3f"],["#bcd0bf","#b3a585","#a76f3c"],["#7faa9b","#7c8b6c","#6b5638"]];
+function terc(v,arr){const a=arr.slice().sort((x,y)=>x-y);const t1=a[Math.floor(a.length/3)],t2=a[Math.floor(2*a.length/3)];return v<=t1?0:v<=t2?1:2;}
+
+/* ===== dropdowns ===== */
+const sel=document.getElementById('metric'),bivSel=document.getElementById('biv');
+const groups={};MK.forEach(k=>{(groups[DATA[k].grp]=groups[DATA[k].grp]||[]).push(k);});
+Object.keys(groups).forEach(g=>{
+ const og=document.createElement('optgroup');og.label=g;const ob=og.cloneNode();ob.label=g;
+ groups[g].forEach(k=>{const o=document.createElement('option');o.value=k;o.textContent=DATA[k].label;og.appendChild(o);
+  const o2=o.cloneNode(true);ob.appendChild(o2);});
+ sel.appendChild(og);bivSel.appendChild(ob);});
+sel.value=metric;
+
+/* ===== map ===== */
+const map=L.map('map',{zoomControl:true,scrollWheelZoom:false,attributionControl:false}).setView([26.3,-98.15],8);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png',{maxZoom:12,opacity:.55}).addTo(map);
+let layer=null,legend=null;
+
+function fillColor(v,min,max){return ramp(max>min?(v-min)/(max-min):0.5);}
+function tipHtml(name,sub,v,lo,hi,cnt){
+ let h=`<strong>${name}</strong><br>${DATA[metric].label}: <b>${v.toFixed(1)}%</b>`;
+ if(lo!=null)h+=` <span style="color:#8C7B61">(95% CI ${lo.toFixed(1)}–${hi.toFixed(1)})</span>`;
+ if(cnt!=null)h+=`<br><span style="color:#8C7B61">≈ ${cnt.toLocaleString()} adults · ${sub}</span>`;
+ else if(sub)h+=`<br><span style="color:#8C7B61">${sub}</span>`;
+ return h;}
+
+function renderCounty(){
+ const feats=FIPS.map(f=>countyGeoCache[f]).filter(Boolean);
+ if(feats.length<4){return false;}
+ if(layer)layer.remove();
+ const vals=FIPS.map(f=>val(metric,f));const[min,max]=rangeFor(metric,vals);
+ const bvals=biv?FIPS.map(f=>val(biv,f)):null;
+ layer=L.geoJSON({type:"FeatureCollection",features:feats},{
+  style:ft=>{const f=ft.properties.FIPS;
+   let fc;if(biv){fc=BIV[terc(val(biv,f),bvals)][terc(val(metric,f),vals)];}
+   else fc=fillColor(val(metric,f),min,max);
+   return{color:'#FBF5E8',weight:1.4,fillOpacity:.88,fillColor:fc};},
+  onEachFeature:(ft,ly)=>{const f=ft.properties.FIPS,c=COUNTIES[f];const[lo,hi]=ci(metric,f);
+   let extra=`${c.seat}`;if(biv)extra+=` · ${DATA[biv].label}: ${val(biv,f).toFixed(1)}%`;
+   ly.bindTooltip(tipHtml(c.name+" County",extra,val(metric,f),rate?null:lo,rate?null:hi,affected(metric,f)),{className:'tip',sticky:true});
+   ly.on('mouseover',()=>ly.setStyle({weight:3,color:'#3E362A'}));ly.on('mouseout',()=>layer.resetStyle(ly));}
+ }).addTo(map);
+ try{map.fitBounds(layer.getBounds(),{padding:[18,18]});}catch(e){}
+ drawLegend(min,max);return true;}
+
+async function renderTract(){
+ spinner(true);
+ try{
+  await ensureTractGeo();
+  const d=await ensureTractData(metric);
+  const bd=biv?await ensureTractData(biv):null;
+  const feats=[];FIPS.forEach(f=>{(tractGeo[f]||[]).forEach(ft=>feats.push(ft));});
+  const vals=feats.map(ft=>d[ft.properties.GEOID]).filter(x=>x).map(x=>x[0]);
+  if(!vals.length){spinner(false);mapFlag("No tract estimates returned for this measure. Showing county view.");level='county';syncLevel();return renderCounty();}
+  const[min,max]=rangeFor(metric,vals);
+  const bvals=bd?feats.map(ft=>bd[ft.properties.GEOID]).filter(x=>x).map(x=>x[0]):null;
+  if(layer)layer.remove();
+  layer=L.geoJSON({type:"FeatureCollection",features:feats},{
+   style:ft=>{const r=d[ft.properties.GEOID];if(!r)return{color:'#FBF5E8',weight:.4,fillOpacity:.15,fillColor:'#DDD0B6'};
+    let fc;if(bd){const br=bd[ft.properties.GEOID];fc=br?BIV[terc(br[0],bvals)][terc(r[0],vals)]:'#DDD0B6';}
+    else fc=fillColor(r[0],min,max);
+    return{color:'#FBF5E8',weight:.4,fillOpacity:.86,fillColor:fc};},
+   onEachFeature:(ft,ly)=>{const r=d[ft.properties.GEOID];const g=ft.properties.GEOID;
+    const cty=COUNTIES[g.substring(0,5)]?COUNTIES[g.substring(0,5)].name:"";
+    if(r){let extra=`Tract ${g.slice(5)} · ${cty}`;if(bd&&bd[g])extra+=` · ${DATA[biv].label}: ${bd[g][0].toFixed(1)}%`;
+     ly.bindTooltip(tipHtml("Census tract",extra,r[0],r[1],r[2],r[3]?Math.round(r[0]/100*r[3]):null),{className:'tip',sticky:true});}
+    ly.on('mouseover',()=>ly.setStyle({weight:2,color:'#3E362A'}));ly.on('mouseout',()=>layer.resetStyle(ly));}
+  }).addTo(map);
+  try{map.fitBounds(layer.getBounds(),{padding:[18,18]});}catch(e){}
+  drawLegend(min,max);mapFlag(null);
+ }catch(e){mapFlag("Live tract layer unavailable (network). Showing county view.");level='county';syncLevel();renderCounty();}
+ spinner(false);}
+
+/* tract geometry from TIGERweb */
+async function ensureTractGeo(){
+ const need=FIPS.filter(f=>!tractGeo[f]);if(!need.length)return;
+ const where=need.map(f=>`GEOID LIKE '${f}%'`).join(' OR ');
+ const url='https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/Tracts_Blocks/MapServer/0/query?where='+
+  encodeURIComponent(where)+'&outFields=GEOID&returnGeometry=true&geometryPrecision=5&outSR=4326&f=geojson';
+ const r=await fetch(url);const gj=await r.json();
+ need.forEach(f=>tractGeo[f]=[]);
+ (gj.features||[]).forEach(ft=>{const g=(ft.properties.GEOID||'').toString();const f=g.substring(0,5);if(tractGeo[f])tractGeo[f].push(ft);});}
+
+/* tract data from CDC PLACES */
+async function ensureTractData(m){
+ if(tractData[m])return tractData[m];
+ const mid=DATA[m].mid;
+ const where=`countyfips in('48061','48215','48427','48489') AND measureid='${mid}' AND datavaluetypeid='CrdPrv'`;
+ const url='https://data.cdc.gov/resource/cwsq-ngmh.json?$select=locationname,data_value,low_confidence_limit,high_confidence_limit,totalpopulation&$limit=5000&$where='+encodeURIComponent(where);
+ const r=await fetch(url);const rows=await r.json();const o={};
+ rows.forEach(x=>{if(x.data_value!=null)o[x.locationname]=[+x.data_value,x.low_confidence_limit?+x.low_confidence_limit:null,x.high_confidence_limit?+x.high_confidence_limit:null,x.totalpopulation?+x.totalpopulation:null];});
+ tractData[m]=o;return o;}
+
+function drawLegend(min,max){
+ if(legend)legend.remove();legend=L.control({position:'bottomright'});
+ legend.onAdd=function(){const d=document.createElement('div');d.className='legend';
+  if(biv){d.classList.add('bivlegend');
+   let h=`<div style="margin-bottom:4px"><b>Bivariate</b></div><table>`;
+   for(let y=2;y>=0;y--){h+='<tr>';for(let x=0;x<3;x++)h+=`<td style="background:${BIV[y][x]}"></td>`;h+='</tr>';}
+   h+=`</table><div style="margin-top:3px;font-size:10px">→ ${DATA[metric].label}<br>↑ ${DATA[biv].label}</div>`;
+   d.innerHTML=h;return d;}
+  let h=`<div style="margin-bottom:4px"><b>${DATA[metric].label}</b> (%)</div>`;
+  for(let i=0;i<5;i++){const v=min+(max-min)*i/4;h+=`<div><i style="background:${fillColor(v,min,max)}"></i>${v.toFixed(1)}</div>`;}
+  h+=`<div style="margin-top:3px;color:#8C7B61">TX ${DATA[metric].tx}% · US ${DATA[metric].us}%</div>`;
+  d.innerHTML=h;return d;};
+ legend.addTo(map);}
+
+function spinner(on){document.getElementById('spinner').classList.toggle('hide',!on);}
+function mapFlag(msg){const el=document.getElementById('mapFlag');if(!msg){el.classList.add('hide');return;}el.classList.remove('hide');el.textContent=msg;}
+
+/* ===== county geometry (from CDN) ===== */
+const countyGeoCache={};
+async function loadCountyGeo(){
+ const urls=['https://cdn.jsdelivr.net/gh/plotly/datasets@master/geojson-counties-fips.json',
+  'https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json'];
+ for(const u of urls){try{const r=await fetch(u);if(!r.ok)continue;const gj=await r.json();
+   gj.features.forEach(ft=>{if(FIPS.includes(ft.id)){ft.properties=ft.properties||{};ft.properties.FIPS=ft.id;countyGeoCache[ft.id]=ft;}});
+   if(Object.keys(countyGeoCache).length===4){renderCounty();return;}}catch(e){}}
+ mapFlag("County outlines couldn't load (offline). Charts, rankings and tables below still work; try the tract view when online.");
+ document.getElementById('map').style.display='none';}
+loadCountyGeo();
+
+/* ===== comparison bar ===== */
+let bar;
+function drawBar(){
+ const labels=FIPS.map(f=>COUNTIES[f].name).concat(['Texas','U.S.']);
+ const vals=FIPS.map(f=>val(metric,f)).concat([DATA[metric].tx,DATA[metric].us]);
+ const cols=vals.map((v,i)=>i<4?ramp((v-Math.min(...vals))/(Math.max(...vals)-Math.min(...vals)||1)):(i===4?'#9C8B5A':'#A8966F'));
+ const ds={labels,datasets:[{data:vals,backgroundColor:cols,borderRadius:5}]};
+ const opt={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},
+  tooltip:{callbacks:{label:c=>c.parsed.y.toFixed(1)+'%'}}},
+  scales:{y:{beginAtZero:true,grid:{color:'#E2D4B6'},ticks:{color:'#8C7B61',callback:v=>v+'%'}},
+   x:{grid:{display:false},ticks:{color:'#574B39',font:{size:11}}}}};
+ if(bar){bar.data=ds;bar.update();}else bar=new Chart(document.getElementById('bar'),{type:'bar',data:ds,options:opt});}
+
+/* ===== KPIs ===== */
+function drawKpis(){
+ const el=document.getElementById('kpis');
+ const ranked=FIPS.slice().sort((a,b)=>val(metric,b)-val(metric,a));
+ el.innerHTML=ranked.map(f=>{const v=val(metric,f),diff=v-DATA[metric].us,[lo,hi]=ci(metric,f);
+  return `<div class="kpi"><div class="l">${COUNTIES[f].name}</div><div class="v">${v.toFixed(1)}%</div>
+   <div class="ci">${rate?'age-adj':'95% CI '+lo.toFixed(1)+'–'+hi.toFixed(1)}</div>
+   <div class="d ${diff>=0?'up':'down'}">${diff>=0?'+':''}${diff.toFixed(1)} vs US · ≈${affected(metric,f).toLocaleString()}</div></div>`;}).join('');}
+
+/* ===== overview ===== */
+function drawOverview(){
+ const items=[['Uninsured adults','access2'],['Adult obesity','obesity'],['Diabetes','diabetes'],['Fair/poor health','ghlth']];
+ document.getElementById('overviewKpis').innerHTML=items.map(([lab,m])=>{
+  const a=pwAvg(m),r=a/DATA[m].us;
+  return `<div class="kpi-fa"><div class="l">${lab}</div><div class="v">${a.toFixed(0)}%</div><div class="d${r>=1?'':' down'}">${r.toFixed(1)}× U.S. reference &middot; &asymp;${totAffected(m).toLocaleString()}</div></div>`;}).join('');
+ const rows=MK.map(m=>{const a=pwAvg(m),r=a/DATA[m].us;let hi=FIPS[0];FIPS.forEach(f=>{if(val(m,f)>val(m,hi))hi=f;});return{m,a,r,hi,hv:val(m,hi),aff:totAffected(m)};}).sort((x,y)=>y.r-x.r);
+ document.querySelector('#rankTable tbody').innerHTML=rows.map(r=>{
+  const col=r.r>=1.3?'#9C3B2E':r.r>=1?'#C99A3D':'#5B7A52';
+  return `<tr><td>${DATA[r.m].label}</td><td>${r.a.toFixed(1)}%</td><td>${DATA[r.m].tx}%</td><td>${DATA[r.m].us}%</td>
+   <td><span class="pill-fa" style="background:${col}22;color:${col}">${r.r.toFixed(2)}×</span></td>
+   <td>${r.aff.toLocaleString()}</td><td>${COUNTIES[r.hi].name} (${r.hv.toFixed(1)}%)</td></tr>`;}).join('');}
+
+/* ===== conditions ===== */
+const DEEP={
+ diabetes:{what:`Type 2 diabetes means the body can no longer keep blood sugar in a healthy range, usually because it stops responding well to insulin. Over years, high blood sugar quietly damages blood vessels, nerves, kidneys, eyes, and feet. "Diagnosed" means a doctor has confirmed it — many more people have it and do not yet know.`,why:`The Valley carries one of the heaviest diabetes burdens in the country. A young but rapidly aging population, very high obesity, limited access to affordable fresh food, and the nation's highest uninsured rates mean the disease is common, caught late, and hard to control.`,connects:`Diabetes sits at the center of almost everything else here. It drives high blood pressure, high cholesterol, heart disease, stroke, chronic kidney disease, and the Valley's nation-leading rate of diabetes-related amputations.`,family:`It is largely preventable and very manageable. Knowing your numbers (A1c and blood pressure), steady physical activity, and affordable medicines keep complications away. If cost or coverage is a barrier, community clinics can help — early control is what saves feet, kidneys, and eyesight.`},
+ obesity:{what:`Obesity is an amount of body fat high enough to raise the risk of other diseases, commonly measured as a body-mass index (BMI) of 30 or more. It is shaped far more by environment and food supply than by willpower.`,why:`Roughly 4 in 10 adults here have obesity. Inexpensive calorie-dense food is everywhere while fresh produce is costly or far away, about 1 in 5 households face food insecurity, and many neighborhoods lack safe places to be active.`,connects:`Obesity is the upstream driver of the Valley's diabetes, high blood pressure, and high cholesterol cluster, and it worsens arthritis and fatty-liver disease.`,family:`Small, sustainable changes matter more than crash diets: everyday movement, water instead of sugary drinks, and home-cooked staples. Childhood obesity is especially high here, so family habits set the path for the next generation.`},
+ bphigh:{what:`High blood pressure (hypertension) means the force of blood against the artery walls stays too high. It usually causes no symptoms — which is why it is called a silent condition — but untreated it damages the heart, brain, and kidneys.`,why:`A third or more of Valley adults have it, tracking the region's diabetes and obesity. Many take medication, but without steady care and coverage, blood pressure often stays uncontrolled.`,connects:`High blood pressure is a leading cause of stroke, heart disease, and kidney failure, and it compounds the damage diabetes already does to blood vessels.`,family:`It is cheap and easy to check — at a clinic, a pharmacy, or with a home monitor. Most cases are controllable with low-cost generic medicine, less salt, and activity. Because it is silent, regular checking is the whole game.`},
+ highchol:{what:`High cholesterol means too much of certain fats in the blood, which build up inside arteries and narrow them over time. Like high blood pressure, it has no symptoms.`,why:`A third or more of adults here are above the benchmark, part of the same diet-and-metabolism pattern driving diabetes and obesity.`,connects:`Together with high blood pressure, diabetes, and obesity it forms a textbook cardiometabolic cluster that ends in heart disease and stroke — the region's leading killers.`,family:`A simple blood test detects it. Diet, activity, and inexpensive statin medicines lower it effectively, and treating it early prevents heart attacks decades later.`},
+ chd:{what:`Coronary heart disease is the narrowing of the arteries that feed the heart muscle, which can cause chest pain and heart attacks. It is the end result of years of cardiovascular risk.`,why:`Rates run above the U.S. in most Valley counties because the upstream risks — diabetes, high blood pressure, high cholesterol, and obesity — are all elevated and often undertreated.`,connects:`It is the downstream destination of the cardiometabolic cluster, and heart disease is the number-one cause of death across the region.`,family:`Much of it is preventable by controlling blood pressure, sugar, and cholesterol. Learn the warning signs of a heart attack and call 911 — minutes of delay cost heart muscle, and rural distance to care makes early action critical.`},
+ stroke:{what:`A stroke happens when blood flow to part of the brain is cut off, by a clot or a bleed, causing brain cells to die. It can cause lasting disability or death and is a medical emergency.`,why:`Stroke prevalence edges above the national level, tracking the Valley's high blood pressure and diabetes. Reported stroke deaths run below the South Texas average — prevalence and mortality do not always move together.`,connects:`Stroke shares its roots with heart disease: uncontrolled blood pressure and diabetes are the main drivers.`,family:`Learn the signs with F.A.S.T. — Face drooping, Arm weakness, Speech difficulty, Time to call 911. Controlling blood pressure is the single most powerful way to prevent one.`},
+ copd:{what:`COPD (chronic obstructive pulmonary disease) is long-term lung damage that makes breathing harder, including chronic bronchitis and emphysema.`,why:`Rates are highest in rural Starr and Willacy even though smoking is relatively low in Cameron and Hidalgo — pointing to occupational and environmental exposures like agricultural dust and air quality rather than tobacco alone.`,connects:`It compounds the region's heart and metabolic disease and limits the physical activity that helps prevent diabetes and obesity.`,family:`If you work around dust, smoke, or fumes, protect your lungs and mention any lasting cough or breathlessness to a clinician. Avoiding tobacco and managing flare-ups keeps the disease from progressing.`},
+ casthma:{what:`Asthma is a condition in which the airways tighten and inflame, causing wheezing, coughing, and shortness of breath. "Current" asthma counts people who still have it, not just a past diagnosis.`,why:`Valley rates sit modestly below the national average, but border air quality and agricultural exposures keep it clinically important, and pediatric asthma keeps appearing in community needs assessments.`,connects:`Like COPD, asthma reflects the region's air and occupational environment and limits physical activity.`,family:`Asthma is very manageable with the right inhalers and an action plan. Knowing your child's triggers and keeping rescue medicine on hand prevents emergency visits.`},
+ cancer:{what:`This measures adults ever told they have cancer other than skin cancer. A single number hides large differences between cancer types.`,why:`Overall cancer prevalence is actually below the U.S. here — partly because the population is young — but that average masks specific excesses: the Valley has historically led the nation in cervical cancer and carries elevated liver and gallbladder cancers.`,connects:`Several local cancers tie back to the same forces seen elsewhere here: obesity and fatty-liver disease (liver cancer) and gaps in screening access (cervical cancer).`,family:`Screening is the most powerful tool — Pap and HPV tests for cervical cancer, plus colon and breast screening — catching these cancers early or preventing them outright. Low-cost screening programs exist in the Valley.`},
+ arthritis:{what:`Arthritis is ongoing joint inflammation that causes pain and stiffness and can limit movement. It becomes more common with age.`,why:`Crude rates look lower than the U.S. because the population is young, but age-adjusted Starr nears the national figure — the age-specific burden is high, tied to obesity and years of manual and agricultural labor.`,connects:`Arthritis pain discourages physical activity, which feeds back into obesity, diabetes, and heart disease.`,family:`Staying active within comfort, managing weight, and treating pain early keep joints working. It is a major reason people stop moving, so it matters more than its mild reputation suggests.`},
+ depression:{what:`Depression is a common, treatable medical condition that affects mood, energy, sleep, and the ability to function — not a personal weakness.`,why:`Rates are near the national average, but they meet some of Texas's thinnest mental-health infrastructure, so the gap between people who need care and providers who can give it is wide.`,connects:`Depression and chronic physical illness feed each other — diabetes, pain, and disability raise depression risk, and depression makes those conditions harder to manage.`,family:`It responds well to treatment — talk therapy, medication, or both. Reaching out is a strength; community clinics and telehealth are expanding options in the Valley, and a trusted doctor is a good first step.`},
+ mhlth:{what:`Frequent mental distress means reporting 14 or more days of poor mental health in the past month — a marker of sustained stress, anxiety, or depression heavy enough to affect daily life.`,why:`It is highest in Starr and, combined with provider shortages and high uninsurance, signals a large unmet need for mental-health support across the region.`,connects:`It overlaps with depression and is worsened by financial strain, chronic illness, and caregiving — all common pressures here.`,family:`Persistent distress is a signal to seek support, not to tough it out. Talking to a clinician, counselor, or trusted person, and protecting sleep and connection, all help.`},
+ ghlth:{what:`This is the share of adults who rate their own health as fair or poor — a simple self-report that strongly predicts future illness, disability, and death.`,why:`In the Valley it runs two to three times the U.S. level, reaching about 40% in Starr — one of the starkest disparities in the data, closely tracking poverty.`,connects:`It is the lived sum of everything else on this page: diabetes, pain, mental distress, and untreated conditions all pull self-rated health down.`,family:`Because it captures how people actually feel, improvement here is the real goal — and it follows from controlling the specific conditions and barriers described in the other cards.`},
+ disability:{what:`Disability here means a serious difficulty with everyday functions — walking, thinking and remembering, seeing, hearing, self-care, or living independently.`,why:`More than a third of Valley adults report a disability, far above the national figure and peaking in Starr, largely from mobility and cognitive limitations that follow years of chronic disease.`,connects:`It is often the downstream result of uncontrolled diabetes, heart disease, stroke, and arthritis — a sign of complications accumulating.`,family:`Many disabilities are preventable or can be delayed by controlling the underlying conditions early. For those already affected, support services and accessible care make a real difference in independence.`},
+ access2:{what:`This is the share of working-age adults (18 to 64) with no health insurance. It is not a disease, but it shapes the outcome of every disease on this page.`,why:`This is the defining structural driver in the Valley: roughly 36 to 44% of working-age adults are uninsured — about triple the U.S. rate — concentrated in colonias and among agricultural and immigrant workers.`,connects:`Being uninsured delays diagnosis and undermines control of diabetes, blood pressure, cholesterol, and cancer — it is the thread running through nearly every gap in these numbers.`,family:`Coverage and low-cost care exist but can be hard to find: community health centers (FQHCs) serve patients regardless of insurance or ability to pay. Knowing where to go is half the battle.`},
+ lpa:{what:`This measures adults who get no leisure-time physical activity — no exercise or active recreation outside of work — in a typical month.`,why:`About a third of adults, and nearly half in Starr, report none, reflecting demanding work, heat, and a built environment with few safe places to walk or play.`,connects:`Inactivity is both a cause and a consequence of the region's obesity, diabetes, and arthritis.`,family:`Activity does not require a gym — walking, dancing, and play all count. Valley programs increasingly focus on walkable streets and parks, because the environment, not motivation, is the main barrier.`},
+ csmoking:{what:`Current smoking is the share of adults who smoke cigarettes now. Tobacco remains a leading preventable cause of disease.`,why:`Smoking sits at or below the U.S. level in Cameron and Hidalgo and is higher in rural Starr. The Valley's heavy cardiovascular disease alongside low smoking confirms that metabolic factors, not tobacco, dominate the local risk picture.`,connects:`Where present, smoking adds to COPD, heart disease, stroke, and cancer risk.`,family:`Quitting at any age brings fast benefits, and free quitlines and clinic support make it easier. But the bigger Valley story is that controlling weight, sugar, and blood pressure matters even more here than tobacco.`},
+ ckd:{what:`Chronic kidney disease (CKD) is the slow loss of the kidneys' ability to filter the blood. It is usually silent until advanced, when it can require dialysis or a transplant.`,why:`CKD is not published in the mappable PLACES dataset, so it is not charted here — but it is a central Valley concern. It is a direct consequence of the region's exceptional diabetes and high-blood-pressure burden, and the Valley's high amputation and dialysis demand are downstream signals.`,connects:`Diabetes and high blood pressure are the two leading causes of CKD; treat the diabetes and blood-pressure cards above as the leading indicators of kidney risk here.`,family:`A simple blood and urine test detects CKD early, when controlling sugar and blood pressure can slow or stop it. If you have diabetes or high blood pressure, ask your clinician about a yearly kidney check.`}
+};
+function drawConditions(){
+ const el=document.getElementById('tab-conditions');
+ const order=MK.slice().sort((a,b)=>pwAvg(b)/DATA[b].us-pwAvg(a)/DATA[a].us);
+ const card=(m,opts)=>{opts=opts||{};const d=DEEP[m]||{};
+  const stat=opts.nostat?(opts.statText||''):`RGV ${pwAvg(m).toFixed(1)}% &middot; TX ${DATA[m].tx}% &middot; US ${DATA[m].us}%`;
+  const grp=opts.grp||(DATA[m]?DATA[m].grp:'');const name=opts.name||(DATA[m]?DATA[m].label:m);
+  const secs=[["What it is",d.what],["Why it's higher in the Valley",d.why],["How it connects",d.connects],["What it means for you and your family",d.family]]
+   .filter(x=>x[1]).map(x=>`<div class="dd-sec"><h4>${x[0]}</h4><p>${x[1]}</p></div>`).join('');
+  const data=NAR[m]?`<div class="dd-data"><span class="dd-data-l">By the numbers</span>${NAR[m]}</div>`:'';
+  return `<details class="dd"${opts.open?' open':''}><summary><span class="dd-name">${name}</span><span class="dd-meta"><span class="dd-stat">${stat}</span>${grp?`<span class="dd-grp">${grp}</span>`:''}</span><span class="dd-x" aria-hidden="true"></span></summary><div class="dd-body">${secs}${data}</div></details>`;};
+ let h='<h2>Condition deep-dives</h2><p style="max-width:74ch;color:#574B39">Each condition in plain language: what it is, why it runs high in the Rio Grande Valley, how it links to the others, and what it means for you and your family. Open a card to read more. Percentages are crude adult prevalence (CDC PLACES 2024); use the Measure control in the sidebar to map any of them.</p>';
+ h+='<div class="dd-list">';
+ order.forEach((m,idx)=>{h+=card(m,{open:idx===0});});
+ h+=card('ckd',{nostat:true,statText:'Not mapped &middot; narrative',grp:'Chronic disease',name:'Chronic kidney disease'});
+ h+='</div>';
+ el.innerHTML=h;}
+
+/* ===== mortality ===== */
+let ampC,costC;
+function drawMortality(){
+ const labels=FIPS.map(f=>COUNTIES[f].name);
+ if(!ampC)ampC=new Chart(document.getElementById('ampChart'),{type:'bar',
+  data:{labels,datasets:[{data:FIPS.map(f=>AMP[f]),backgroundColor:FIPS.map(f=>ramp(AMP[f]/13)),borderRadius:5}]},
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>c.parsed.y+'% of diabetes discharges'}},
+   annotation:false},scales:{y:{beginAtZero:true,grid:{color:'#E2D4B6'},ticks:{color:'#8C7B61',callback:v=>v+'%'}},x:{grid:{display:false},ticks:{color:'#574B39'}}}}});
+ if(!costC)costC=new Chart(document.getElementById('costChart'),{type:'bar',
+  data:{labels,datasets:[{data:FIPS.map(f=>COST[f]),backgroundColor:'#BD5D3A',borderRadius:5}]},
+  options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>'$'+c.parsed.y.toLocaleString()}}},
+   scales:{y:{beginAtZero:true,grid:{color:'#E2D4B6'},ticks:{color:'#8C7B61',callback:v=>'$'+v}},x:{grid:{display:false},ticks:{color:'#574B39'}}}}});
+ document.querySelector('#mortTable tbody').innerHTML=MORT.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td><td>${r[2]}</td><td class="note">${r[3]}</td></tr>`).join('');}
+
+/* ===== determinants ===== */
+let scC;
+function drawDeterminants(){
+ document.getElementById('sdohCards').innerHTML=FIPS.map(f=>{const s=SDOH[f];
+  return `<div class="scard"><h4>${COUNTIES[f].name}</h4>
+   <div class="row"><span>Poverty</span><b>${s.pov}%</b></div>
+   <div class="row"><span>Median income</span><b>$${s.mhi.toLocaleString()}</b></div>
+   <div class="row"><span>Uninsured 18–64</span><b>${DATA.access2.v[f][0]}%</b></div>
+   <div class="row"><span>Food insecurity</span><b>~${s.food}%</b></div>
+   <div class="row"><span>SVI percentile</span><b>${(s.svi*100).toFixed(0)}th</b></div>
+   <div class="bar2" style="margin-top:8px"><div style="width:${s.svi*100}%;background:#B0492F"></div></div>
+   <div class="note" style="margin-top:3px">Social vulnerability</div></div>`;}).join('');
+ const pts=FIPS.map(f=>({x:DATA.access2.v[f][0],y:val(metric,f),r:Math.sqrt(COUNTIES[f].pop18)/90,name:COUNTIES[f].name}));
+ const ds={datasets:[{data:pts,backgroundColor:'#BD5D3A99',borderColor:'#BD5D3A',borderWidth:1}]};
+ const opt={responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},
+  tooltip:{callbacks:{label:c=>`${c.raw.name}: ${c.raw.y.toFixed(1)}% (uninsured ${c.raw.x}%)`}}},
+  scales:{x:{title:{display:true,text:'Uninsured 18–64 (%)',color:'#8C7B61'},grid:{color:'#E2D4B6'},ticks:{color:'#8C7B61'}},
+   y:{title:{display:true,text:DATA[metric].label+' (%)',color:'#8C7B61'},grid:{color:'#E2D4B6'},ticks:{color:'#8C7B61'}}}};
+ if(scC){scC.data=ds;scC.options=opt;scC.update();}else scC=new Chart(document.getElementById('scatter'),{type:'bubble',data:ds,options:opt});}
+
+/* ===== trajectory ===== */
+let trajC;
+function drawTrajectory(){
+ const labels=MK.map(m=>DATA[m].label);
+ const crude=MK.map(m=>pwAvg2(m,0)),adj=MK.map(m=>pwAvg2(m,1)),us=MK.map(m=>DATA[m].us);
+ const ds={labels,datasets:[
+  {label:'RGV crude',data:crude,backgroundColor:'#BD5D3A'},
+  {label:'RGV age-adjusted',data:adj,backgroundColor:'#3E7C7B'},
+  {label:'U.S.',data:us,type:'line',borderColor:'#B07F2C',backgroundColor:'#B07F2C',pointRadius:3,fill:false}]};
+ const opt={responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#574B39'}}},
+  scales:{y:{beginAtZero:true,grid:{color:'#E2D4B6'},ticks:{color:'#8C7B61',callback:v=>v+'%'}},x:{grid:{display:false},ticks:{color:'#8C7B61',font:{size:9},maxRotation:60,minRotation:60}}}};
+ if(trajC){trajC.data=ds;trajC.update();}else trajC=new Chart(document.getElementById('trajChart'),{type:'bar',data:ds,options:opt});}
+function pwAvg2(m,r){let n=0,d=0;FIPS.forEach(f=>{n+=DATA[m].v[f][r]*COUNTIES[f].pop18;d+=COUNTIES[f].pop18;});return n/d;}
+
+/* ===== data table ===== */
+let sortCol='diabetes',sortDir=-1;
+function drawTable(){
+ const th=document.querySelector('#dataTable thead'),tb=document.querySelector('#dataTable tbody');
+ th.innerHTML='<tr><th data-c="name">County</th>'+MK.map(m=>`<th data-c="${m}">${DATA[m].label}</th>`).join('')+'</tr>';
+ let rows=FIPS.slice().sort((a,b)=>sortCol==='name'?sortDir*COUNTIES[a].name.localeCompare(COUNTIES[b].name):sortDir*(val(sortCol,a)-val(sortCol,b)));
+ tb.innerHTML=rows.map(f=>'<tr><td><b>'+COUNTIES[f].name+'</b></td>'+MK.map(m=>{const v=val(m,f),hot=v>DATA[m].us;const[lo,hi]=ci(m,f);
+  return `<td style="${hot?'color:#B0492F':'color:#5E7B4F'}" title="95% CI ${lo}–${hi}">${v.toFixed(1)}</td>`;}).join('')+'</tr>').join('');
+ tb.innerHTML+='<tr style="border-top:2px solid #D9CBAE"><td class="note"><b>Texas</b></td>'+MK.map(m=>`<td class="note">${DATA[m].tx}</td>`).join('')+'</tr>';
+ tb.innerHTML+='<tr><td class="note"><b>U.S.</b></td>'+MK.map(m=>`<td class="note">${DATA[m].us}</td>`).join('')+'</tr>';
+ th.querySelectorAll('th').forEach(t=>t.onclick=()=>{const c=t.dataset.c;if(sortCol===c)sortDir*=-1;else{sortCol=c;sortDir=-1;}drawTable();});}
+
+document.getElementById('srcList').innerHTML=SOURCES.map(s=>`<li><a href="${s[1]}" target="_blank" rel="noopener">${s[0]}</a></li>`).join('');
+
+/* ===== RECENT RESEARCH (live: Europe PMC) ===== */
+const RESEARCH_FALLBACK=[
+ {title:"Diabetes-Related Lower Limb Amputations in the Rio Grande Valley of Texas: A Focused Look at a Historical Health Disparity",journal:"J Racial Ethn Health Disparities",date:"2026",authors:"Collazo A, Shibuya N, Prochaska J, Jupiter DC",cat:"Diabetes",oa:false,url:"https://pubmed.ncbi.nlm.nih.gov/39946083/",sum:"Confirms the RGV's long-standing excess of diabetes-related lower-limb amputations relative to Texas and the U.S., framing it as a persistent, addressable health disparity."},
+ {title:"Walking the Line: How Social Forces Shape Diabetic Foot Outcomes in the Texas Rio Grande Valley",journal:"Clin Podiatr Med Surg",date:"2026",authors:"Killeen AL, Campbell SN, Jean N, Lopez Alvarenga JC, et al.",cat:"Diabetes",oa:false,url:"https://pubmed.ncbi.nlm.nih.gov/41856726/",sum:"Reviews how poverty, uninsurance, and access barriers drive worse diabetic-foot and amputation outcomes in the Valley beyond clinical risk factors alone."},
+ {title:"Decentralizing dementia research to the US-Mexico border: the Rio Grande Valley AD-RCMAR as a model for translational equity",journal:"Alzheimer's Dement (N Y)",date:"2026",authors:"Maestre GE, Blangero J, Manusov EG, de Erausquin GA, et al.",cat:"Mental/Neuro",oa:true,url:"https://pubmed.ncbi.nlm.nih.gov/41953574/",sum:"Describes a border-based Alzheimer's research center building community-embedded dementia studies in an underserved Hispanic population."},
+ {title:"Genetic Variants Associated with MASLD and Depression: Shared Association of ADAMTS7 and THRAP3",journal:"Genes (Basel)",date:"2026",authors:"Manusov EG, Diego VP, Almeida M, Galan JA, et al.",cat:"Metabolic/Liver",oa:true,url:"https://pubmed.ncbi.nlm.nih.gov/41898876/",sum:"In an RGV Hispanic cohort, identifies shared genetic links between metabolic-dysfunction–associated steatotic liver disease and depression."},
+ {title:"Addressing the cervical cancer burden in the Rio Grande Valley through a multi-component program to improve screening and diagnostic follow-up",journal:"Cancer Causes Control",date:"2024",authors:"et al.",cat:"Cancer",oa:false,url:"https://pubmed.ncbi.nlm.nih.gov/39954550/",sum:"Retrospective cohort evaluating a community program of education, navigation, and provider training to raise cervical-cancer screening in a region with ~55% higher incidence."},
+ {title:"Burden of Diabetes Mellitus in the Medically Underserved Rio Grande Valley",journal:"Cureus",date:"2024",authors:"et al.",cat:"Diabetes",oa:true,url:"https://pmc.ncbi.nlm.nih.gov/articles/PMC11500487/",sum:"Texas hospital-discharge analysis (2012–2022) documenting county-level diabetes burden, complications, and the nation-leading amputation rates across Cameron, Hidalgo, Starr and Willacy."},
+ {title:"The AHORA Study: Rapid Antiretroviral Therapy Initiation in People with Advanced HIV in the Rio Grande Valley",journal:"AIDS Patient Care STDS",date:"2025",authors:"Mercado L, Quiroga L, Cantu E, et al.",cat:"Infectious",oa:false,url:"https://pubmed.ncbi.nlm.nih.gov/41025973/",sum:"Mixed-methods evaluation of rapid ART initiation for advanced HIV in the Valley, examining real-world effectiveness and patient experience."},
+ {title:"UTRGV awarded $18.4M NIH grant to establish the RGV Cancer Health Disparity Research Center",journal:"UTRGV Newsroom",date:"2024",authors:"University of Texas Rio Grande Valley",cat:"Cancer",oa:true,url:"https://www.utrgv.edu/newsroom/2024/10/3/utrgv-awarded-184m-nih-grant-to-establish-cancer-research-center.htm",sum:"NIH RCMI funding to target breast, liver, cervical and colon cancers — the leading causes of cancer death in the Valley — in underserved Hispanic communities."}
+];
+
+let researchItems=[], researchLoaded=false, rFilter="All";
+function catOf(t){t=(t||'').toLowerCase();
+ if(/cancer|tumou?r|oncolog|carcinoma|breast|cervical|neoplas|metasta|hpv/.test(t))return'Cancer';
+ if(/diabet|glucose|insulin|amputat|diabetic foot|glycem/.test(t))return'Diabetes';
+ if(/obes|metabolic|steato|nafld|masld|fatty liver|cirrhos|hepati|liver/.test(t))return'Metabolic/Liver';
+ if(/heart|cardio|stroke|hypertens|vascular|cholesterol/.test(t))return'Cardiovascular';
+ if(/depress|mental|anxiety|dementia|alzheimer|cognit|neuro|psych/.test(t))return'Mental/Neuro';
+ if(/hiv|infect|virus|viral|tick|covid|vaccine|tubercul|zoonot/.test(t))return'Infectious';
+ if(/maternal|pregnan|prenatal|birth|obstetr/.test(t))return'Maternal';
+ return'Other';}
+function esc(s){return (s||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+function shorten(s,n){s=(s||'').replace(/<[^>]+>/g,'').trim();return s.length>n?s.slice(0,n).replace(/\s+\S*$/,'')+'…':s;}
+function authShort(a){if(!a)return'';const p=a.replace(/\.$/,'').split(', ');return p.length>5?p.slice(0,5).join(', ')+', et al.':a;}
+
+function normalizeEPMC(x){
+ const pmid=x.pmid||(x.source==='MED'?x.id:null);
+ const url=pmid?`https://pubmed.ncbi.nlm.nih.gov/${pmid}/`:(x.pmcid?`https://www.ebi.ac.uk/europepmc/webservices/rest/${x.source}/${x.id}`:`https://europepmc.org/article/${x.source}/${x.id}`);
+ const date=x.firstPublicationDate||x.pubYear||'';
+ return {title:x.title||'(untitled)',journal:x.journalTitle||x.bookOrReportDetails||'',date:date,
+  authors:x.authorString||'',cat:catOf((x.title||'')+' '+(x.keywordList?'':'')),oa:x.isOpenAccess==='Y',
+  url:url,sum:x.abstractText?shorten(x.abstractText,300):''};}
+
+function renderResearch(){
+ const cats=['All',...Array.from(new Set(researchItems.map(i=>i.cat)))];
+ document.getElementById('researchChips').innerHTML=cats.map(c=>`<span class="chip${c===rFilter?' on':''}" data-cat="${c}">${c}${c==='All'?'':' ('+researchItems.filter(i=>i.cat===c).length+')'}</span>`).join('');
+ document.querySelectorAll('#researchChips .chip').forEach(ch=>ch.onclick=()=>{rFilter=ch.dataset.cat;renderResearch();});
+ const list=researchItems.filter(i=>rFilter==='All'||i.cat===rFilter);
+ document.getElementById('researchList').innerHTML=list.map(i=>{
+  const dt=(i.date||'').length>=10?new Date(i.date).toLocaleDateString(undefined,{year:'numeric',month:'short'}):i.date;
+  return `<div class="rcard"><div class="rtag">${i.cat}</div>
+   <h4><a href="${i.url}" target="_blank" rel="noopener">${esc(i.title)}</a></h4>
+   <div class="meta">${esc(i.journal)}${i.journal&&dt?' · ':''}${dt}${i.authors?'<br>'+esc(authShort(i.authors)):''}</div>
+   ${i.sum?`<div class="sum">${esc(i.sum)}</div>`:''}
+   <div class="foot">${i.oa?'<span class="oa">Open access</span>':''}<a class="rlink" href="${i.url}" target="_blank" rel="noopener">Open study →</a></div></div>`;}).join('')
+   ||'<p class="note">No studies in this category.</p>';}
+
+async function loadResearch(force){
+ if(researchLoaded&&!force)return;
+ const st=document.getElementById('researchStatus');
+ st.innerHTML='<span class="spin"></span>Fetching the latest studies from Europe PMC…';
+ const q='TITLE_ABS:"Rio Grande Valley" AND (TITLE_ABS:health OR TITLE_ABS:diabetes OR TITLE_ABS:cancer OR TITLE_ABS:obesity OR TITLE_ABS:disease OR TITLE_ABS:cardiovascular OR TITLE_ABS:Hispanic OR TITLE_ABS:patients OR TITLE_ABS:clinical OR TITLE_ABS:mental OR TITLE_ABS:maternal)';
+ const url='https://www.ebi.ac.uk/europepmc/webservices/rest/search?query='+encodeURIComponent(q)+'&format=json&pageSize=24&resultType=core&sort='+encodeURIComponent('P_PDATE_D desc');
+ try{
+  const r=await fetch(url);const j=await r.json();
+  const items=(j.resultList&&j.resultList.result)||[];
+  if(!items.length)throw new Error('empty');
+  researchItems=items.map(normalizeEPMC);researchLoaded=true;rFilter='All';renderResearch();
+  st.innerHTML=`Live · ${researchItems.length} most-recent studies from Europe PMC (PubMed/MEDLINE), of ${j.hitCount.toLocaleString()} total. Refreshed ${new Date().toLocaleString()}.`;
+ }catch(e){
+  researchItems=RESEARCH_FALLBACK.slice();rFilter='All';renderResearch();
+  st.textContent='Live feed unavailable (offline or blocked) — showing a curated list of landmark RGV studies. Reconnect and press Refresh for the newest.';
+ }}
+document.getElementById('rRefresh').onclick=()=>loadResearch(true);
+
+/* ===== exports ===== */
+function downloadCsv(){
+ let csv='County,FIPS,'+MK.map(m=>'"'+DATA[m].label+(rate?' (adj)':' (crude)')+'"').join(',')+',EstAffected_'+metric+'\n';
+ FIPS.forEach(f=>{csv+=COUNTIES[f].name+','+f+','+MK.map(m=>val(m,f)).join(',')+','+affected(metric,f)+'\n';});
+ csv+='Texas,,'+MK.map(m=>DATA[m].tx).join(',')+',\n';csv+='US,,'+MK.map(m=>DATA[m].us).join(',')+',\n';
+ const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='rgv_health_'+metric+'.csv';a.click();}
+function savePng(){const t=document.getElementById('map');html2canvas(t,{backgroundColor:'#FBF5E8',useCORS:true}).then(cv=>{const a=document.createElement('a');a.href=cv.toDataURL('image/png');a.download='rgv_map_'+metric+'.png';a.click();}).catch(()=>alert('Map image needs the layers loaded online first.'));}
+document.getElementById('btnCsv').onclick=downloadCsv;
+document.getElementById('btnPng').onclick=savePng;
+document.getElementById('btnPrint').onclick=()=>window.print();
+
+/* ===== refresh / events ===== */
+function syncLevel(){document.querySelectorAll('#levelToggle button').forEach(b=>b.classList.toggle('on',b.dataset.lvl===level));
+ document.querySelectorAll('#rateToggle button').forEach(b=>b.disabled=(level==='tract'));}
+function refreshMap(){document.getElementById('mapTitle').textContent=DATA[metric].label+(biv?' × '+DATA[biv].label:'')+' — '+(level==='tract'?'by census tract':'by county');
+ document.getElementById('mapSub').textContent='% of adults (18+) · '+(level==='tract'?'crude · CDC PLACES 2025 (live)':((rate?'age-adjusted':'crude')+' · CDC PLACES 2024'));
+ if(level==='tract')renderTract();else renderCounty();
+ drawBar();drawKpis();drawDeterminants();}
+function refreshAll(){syncLevel();refreshMap();drawOverview();drawConditions();drawMortality();drawTrajectory();drawTable();}
+
+sel.onchange=e=>{metric=e.target.value;refreshMap();drawTable();};
+bivSel.onchange=e=>{biv=e.target.value;document.getElementById('cmpTitle').textContent=biv?'County comparison (primary measure)':'County comparison';refreshMap();};
+document.querySelectorAll('#levelToggle button').forEach(b=>b.onclick=()=>{level=b.dataset.lvl;syncLevel();refreshMap();});
+document.querySelectorAll('#rateToggle button').forEach(b=>b.onclick=()=>{if(b.disabled)return;rate=b.dataset.rate==='adj'?1:0;
+ document.querySelectorAll('#rateToggle button').forEach(x=>x.classList.toggle('on',x===b));refreshAll();});
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{document.querySelectorAll('.tabs button').forEach(x=>x.classList.remove('on'));b.classList.add('on');
+ ['overview','conditions','mortality','determinants','context','trajectory','research','data','methods'].forEach(t=>document.getElementById('tab-'+t).classList.add('hide'));
+ document.getElementById('tab-'+b.dataset.tab).classList.remove('hide');
+ if(b.dataset.tab==='research')loadResearch();});
+
+/* init */
+refreshAll();
+</script>
+</body>
+</html>
